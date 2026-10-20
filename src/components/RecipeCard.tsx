@@ -1,8 +1,6 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Heart } from "lucide-react";
-
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Heart, Clock, Flame } from 'lucide-react';
 import {
   Card,
   CardHeader,
@@ -11,169 +9,177 @@ import {
   CardContent,
   Badge,
   Button,
-} from "@/components/ui/shadcn";
-import { Recipe, useApp } from "@/mock";
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/shadcn';
+import { Recipe } from '@/mock';
 
 export interface RecipeCardProps {
   recipe: Recipe;
-  /**
-   * When true, renders a favorite toggle icon button in the header.
-   * Uses mocked favorite state from src/mock.ts (localStorage only, no backend).
-   */
-  showFavoriteToggle?: boolean;
-  /**
-   * Optional flag to render a more compact layout (for side rails, etc.)
-   */
-  dense?: boolean;
+  isFavorite: boolean;
+  onOpen: (recipeId: string) => void;
+  onToggleFavorite: (recipeId: string) => void;
 }
 
-const imageMotion = {
-  rest: { scale: 1, opacity: 1 },
-  hover: { scale: 1.03, opacity: 1 },
+const difficultyLabel: Record<Recipe['difficulty'], string> = {
+  easy: 'Gentle',
+  medium: 'Weekend project',
+  hard: 'Slow & elaborate',
 };
 
-const cardMotion = {
-  rest: { y: 0, boxShadow: "0 8px 24px rgba(20, 12, 8, 0.03)" },
-  hover: { y: -4, boxShadow: "0 14px 32px rgba(20, 12, 8, 0.12)" },
+const difficultyColor: Record<Recipe['difficulty'], string> = {
+  easy: 'bg-emerald-50 text-emerald-800 border-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-700/60',
+  medium:
+    'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700/60',
+  hard: 'bg-rose-50 text-rose-800 border-rose-100 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-700/60',
 };
 
 const RecipeCard: React.FC<RecipeCardProps> = ({
   recipe,
-  showFavoriteToggle = true,
-  dense = false,
+  isFavorite,
+  onOpen,
+  onToggleFavorite,
 }) => {
-  const navigate = useNavigate();
-  const { isFavorite, toggleFavorite } = useApp();
-
-  const favorite = isFavorite(recipe.id);
-
-  const handleNavigate = () => {
-    navigate(`/recipe/${encodeURIComponent(recipe.id)}`);
-  };
-
-  const handleFavoriteClick: React.MouseEventHandler<HTMLButtonElement> = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    toggleFavorite(recipe.id);
-  };
-
-  const previewSnippet = React.useMemo(() => {
-    const base = recipe.description || recipe.instructions[0] || "";
-    if (base.length <= 120) return base;
-    return `${base.slice(0, 117)}...`;
-  }, [recipe.description, recipe.instructions]);
-
   const totalTime = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
 
+  const handleCardActivate = () => {
+    onOpen(recipe.id);
+  };
+
+  const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleCardActivate();
+    }
+  };
+
+  const handleFavoriteClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+    event.stopPropagation();
+    onToggleFavorite(recipe.id);
+  };
+
   return (
-    <motion.article
-      initial="rest"
-      whileHover="hover"
-      animate="rest"
-      variants={cardMotion}
-      transition={{ type: "spring", stiffness: 260, damping: 22, mass: 0.9 }}
-      className="h-full"
+    <motion.div
+      whileHover={{ y: -4 }}
+      whileTap={{ y: 0 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+      className="h-full min-w-0"
     >
       <Card
         role="button"
-        aria-label={`View recipe: ${recipe.title}`}
         tabIndex={0}
-        onClick={handleNavigate}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleNavigate();
-          }
-        }}
-        className="group flex h-full flex-col overflow-hidden border border-[#e0d2c4]/80 bg-[#fdf8f3] text-[#3e2c23] shadow-sm transition-colors duration-200 hover:border-[#d6b9a0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d94f4f]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f9f5f0] dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100"
+        aria-label={`Open recipe: ${recipe.title}`}
+        onClick={handleCardActivate}
+        onKeyDown={handleKeyDown}
+        className="group flex h-full flex-col overflow-hidden border border-orange-100/70 bg-gradient-to-b from-orange-50/60 via-amber-50/40 to-stone-50/60 text-left shadow-sm transition-colors duration-200 hover:border-orange-300/80 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/80 dark:from-stone-900 dark:via-stone-900/90 dark:to-stone-950 dark:border-stone-800 dark:hover:border-amber-500/70"
       >
-        <div className="relative w-full overflow-hidden bg-[#f3e4d6] dark:bg-neutral-900">
-          <motion.img
-            loading="lazy"
-            decoding="async"
-            src={recipe.image}
+        <div className="relative aspect-[4/3] w-full overflow-hidden">
+          <img
+            src={recipe.imageUrl}
             alt={recipe.title}
-            variants={imageMotion}
-            transition={{ type: "spring", stiffness: 220, damping: 26 }}
-            className="h-52 w-full object-cover transition-[filter] duration-300 group-hover:brightness-[1.04] sm:h-56 md:h-60"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            loading="lazy"
+          />
+          {/* soft shine overlay on hover */}
+          <motion.div
+            aria-hidden="true"
+            initial={{ opacity: 0 }}
+            whileHover={{ opacity: 1 }}
+            className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-stone-950/10 via-transparent to-amber-100/40 mix-blend-soft-light"
           />
         </div>
 
-        <CardHeader className="flex flex-1 flex-col gap-3 pb-3">
+        <CardHeader className="flex flex-1 flex-col gap-3 pb-2">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle className="font-['Playfair_Display'] text-lg font-semibold leading-snug tracking-tight text-[#3e2c23] dark:text-neutral-50">
-              {recipe.title}
-            </CardTitle>
+            <div className="min-w-0 space-y-1">
+              <CardTitle className="font-['Playfair_Display'] text-lg font-semibold leading-snug text-stone-900 dark:text-stone-100">
+                {recipe.title}
+              </CardTitle>
+              {recipe.cuisine && (
+                <CardDescription className="text-sm text-stone-600 dark:text-stone-300/80">
+                  {recipe.cuisine}
+                </CardDescription>
+              )}
+            </div>
 
-            {showFavoriteToggle && (
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                aria-label={favorite ? "Remove from favorites" : "Save to favorites"}
-                onClick={handleFavoriteClick}
-                className="mt-0.5 h-8 w-8 shrink-0 rounded-full border border-transparent bg-white/70 text-[#d94f4f] shadow-sm transition-colors duration-200 hover:border-[#f3c0b8] hover:bg-[#fef4f3] dark:bg-neutral-900 dark:text-rose-300 dark:hover:bg-neutral-800"
-              >
-                <Heart
-                  className={`h-4 w-4 transition-colors duration-200 ${
-                    favorite ? "fill-current" : "fill-transparent"
-                  }`}
-                />
-              </Button>
-            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={isFavorite ? 'Remove from favorites' : 'Save to favorites'}
+                  onClick={handleFavoriteClick}
+                  className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-100 bg-white/70 text-rose-500 shadow-sm transition-colors duration-150 hover:bg-rose-50 hover:text-rose-600 dark:border-rose-900/50 dark:bg-stone-900/80 dark:text-rose-300 dark:hover:bg-rose-900/30 dark:hover:text-rose-200"
+                >
+                  <Heart
+                    className={`h-4 w-4 transition-transform duration-150 ${
+                      isFavorite ? 'fill-current scale-110' : 'scale-100'
+                    }`}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-900 text-stone-50">
+                <p className="text-xs font-medium">
+                  {isFavorite ? 'Saved to your table' : 'Save to favorites'}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           </div>
 
-          <CardDescription className="text-[0.8rem] font-medium uppercase tracking-[0.18em] text-[#a27c5b] dark:text-amber-200/80">
-            {recipe.cuisine} • {totalTime} min • Serves {recipe.servings}
-          </CardDescription>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center rounded-full bg-stone-900/5 px-2.5 py-1 text-xs font-medium text-stone-700 ring-1 ring-stone-200/80 dark:bg-stone-800 dark:text-stone-100 dark:ring-stone-700">
+              <Clock className="mr-1.5 h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
+              <span>{totalTime} min</span>
+            </div>
 
-          {!dense && (
-            <CardContent className="mt-1.5 px-0 pb-0">
-              <p className="text-sm leading-relaxed text-[#5b4335] dark:text-neutral-300">
-                {previewSnippet}
-              </p>
-            </CardContent>
-          )}
-        </CardHeader>
+            <div
+              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${difficultyColor[recipe.difficulty]}`}
+            >
+              <Flame className="mr-1.5 h-3.5 w-3.5" />
+              <span>{difficultyLabel[recipe.difficulty]}</span>
+            </div>
 
-        <CardContent className="mt-auto flex flex-col gap-3 pt-0">
-          <div className="flex flex-wrap gap-1.5">
-            {recipe.tags.slice(0, 4).map((tag) => (
-              <Badge
-                key={tag}
-                variant="outline"
-                className="rounded-full border-[#e0c7ae] bg-[#f9f0e7] px-3 py-1 text-[0.7rem] font-medium tracking-wide text-[#5b4335] transition-colors duration-200 group-hover:border-[#d6b9a0] group-hover:bg-[#f4e3d3] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-              >
-                {tag}
-              </Badge>
-            ))}
             {recipe.isGenerated && (
               <Badge
                 variant="outline"
-                className="rounded-full border-[#f0b8aa] bg-[#fef1ee] px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[#c53c3c] transition-colors duration-200 group-hover:border-[#e69584] group-hover:bg-[#ffe4dc] dark:border-rose-900 dark:bg-rose-950/70 dark:text-rose-200"
+                className="rounded-full border-dashed border-amber-400/70 bg-amber-50/70 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:border-amber-500/60 dark:bg-amber-900/30 dark:text-amber-200"
               >
-                AI Crafted
+                Mock AI
               </Badge>
             )}
           </div>
+        </CardHeader>
 
-          <div className="flex items-center justify-between gap-3 pb-3">
-            <span className="text-xs font-medium uppercase tracking-[0.18em] text-[#a27c5b]/90 dark:text-neutral-400">
-              Tap to open recipe
-            </span>
+        <CardContent className="pb-4 pt-0">
+          {recipe.description && (
+            <p className="mb-3 line-clamp-3 text-sm leading-relaxed text-stone-700 dark:text-stone-200/90">
+              {recipe.description}
+            </p>
+          )}
 
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-full border-[#d3b399] bg-white/80 px-3 text-xs font-semibold tracking-wide text-[#7a5036] shadow-sm transition-[background-color,border-color,color] duration-200 group-hover:border-[#c28f6e] group-hover:bg-[#f6e2cf] group-hover:text-[#5b3420] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-500 dark:hover:bg-neutral-800"
-            >
-              View Details
-            </Button>
-          </div>
+          {recipe.tags && recipe.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {recipe.tags.slice(0, 4).map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="outline"
+                  className="rounded-full border-stone-200 bg-stone-50/80 px-2.5 py-0.5 text-xs font-medium lowercase tracking-tight text-stone-700 transition-colors duration-150 group-hover:border-orange-300 group-hover:bg-orange-50/80 group-hover:text-orange-800 dark:border-stone-700 dark:bg-stone-800/70 dark:text-stone-200 dark:group-hover:border-amber-400/80 dark:group-hover:bg-amber-900/20 dark:group-hover:text-amber-200"
+                >
+                  {tag}
+                </Badge>
+              ))}
+              {recipe.tags.length > 4 && (
+                <span className="text-[11px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+                  +{recipe.tags.length - 4} more
+                </span>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
-    </motion.article>
+    </motion.div>
   );
 };
 

@@ -16,17 +16,18 @@ export const APP_ROUTES: RouteItem[] = [
     "showInNav": true
   },
   {
-    "path": "/search",
-    "name": "SearchPage",
-    "filePath": "src/pages/SearchPage.tsx",
-    "navLabel": "Search",
+    "path": "/browse",
+    "name": "BrowsePage",
+    "filePath": "src/pages/BrowsePage.tsx",
+    "navLabel": "Browse Recipes",
     "showInNav": true
   },
   {
-    "path": "/recipe/:id",
-    "name": "RecipePage",
-    "filePath": "src/pages/RecipePage.tsx",
-    "showInNav": false
+    "path": "/generate",
+    "name": "GeneratePage",
+    "filePath": "src/pages/GeneratePage.tsx",
+    "navLabel": "Generate Recipe",
+    "showInNav": true
   },
   {
     "path": "/favorites",
@@ -34,12 +35,6 @@ export const APP_ROUTES: RouteItem[] = [
     "filePath": "src/pages/FavoritesPage.tsx",
     "navLabel": "Favorites",
     "showInNav": true
-  },
-  {
-    "path": "*",
-    "name": "NotFoundPage",
-    "filePath": "src/pages/NotFoundPage.tsx",
-    "showInNav": false
   }
 ];
 
@@ -49,8 +44,12 @@ export const NAV_LINKS: Array<{ path: string; label: string }> = [
     "label": "Home"
   },
   {
-    "path": "/search",
-    "label": "Search"
+    "path": "/browse",
+    "label": "Browse Recipes"
+  },
+  {
+    "path": "/generate",
+    "label": "Generate Recipe"
   },
   {
     "path": "/favorites",

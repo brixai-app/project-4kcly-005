@@ -1,243 +1,264 @@
-import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { HeartCrack, Sparkles, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { HeartOff, Sparkles, ArrowRight, BookmarkMinus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+import type { AppState, Recipe } from '@/mock';
+import { getFavoriteRecipes } from '@/mock';
+
+import RecipeCard from '@/components/RecipeCard';
+import RecipeDetailSheet from '@/components/RecipeDetailSheet';
 
 import {
   Button,
   Card,
-  CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription,
+  CardContent,
+  Badge,
   Separator,
-} from "@/components/ui/shadcn";
+} from '@/components/ui/shadcn';
 
-import {
-  FavoriteRecipe,
-  subscribeToFavorites,
-  clearAllFavorites,
-  removeFavorite,
-} from "@/mock";
+export interface FavoritesPageProps {
+  state: AppState;
+  onToggleFavorite: (recipeId: string) => void;
+}
 
-import { FavoritesMasonry } from "@/components/FavoritesMasonry";
+const gridVariants = {
+  hidden: { opacity: 0, y: 8 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { staggerChildren: 0.04, delayChildren: 0.04 },
+  },
+};
 
-// NOTE: This page is 100% frontend-only and uses the mocked, in-browser state from src/mock.ts.
-// All favorites and mutations persist only to this browser via localStorage.
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0 },
+};
 
-export const FavoritesPage: React.FC = () => {
-  const [favorites, setFavorites] = useState<FavoriteRecipe[]>([]);
-  const [isClearing, setIsClearing] = useState(false);
+const FavoritesPage: React.FC<FavoritesPageProps> = ({ state, onToggleFavorite }) => {
   const navigate = useNavigate();
+  const favoriteRecipes = getFavoriteRecipes(state);
 
-  useEffect(() => {
-    // Subscribe to the single mock favorites store.
-    const unsubscribe = subscribeToFavorites((next) => {
-      setFavorites(next);
-    });
-    return unsubscribe;
-  }, []);
+  const [selectedRecipe, setSelectedRecipe] = React.useState<Recipe | null>(
+    favoriteRecipes[0] ?? null,
+  );
+  const [detailOpen, setDetailOpen] = React.useState(false);
 
-  const handleClearAll = () => {
-    if (!favorites.length || isClearing) return;
-    setIsClearing(true);
-    const result = clearAllFavorites();
-    toast[result.status === "success" ? "success" : "error"](result.message);
-    setIsClearing(false);
+  React.useEffect(() => {
+    if (!selectedRecipe) return;
+    const stillExists = state.recipes.find((r) => r.id === selectedRecipe.id);
+    const stillFavorite = state.favorites.includes(selectedRecipe.id);
+    if (!stillExists || !stillFavorite) {
+      setDetailOpen(false);
+      if (favoriteRecipes.length > 0) {
+        setSelectedRecipe(favoriteRecipes[0]);
+      } else {
+        setSelectedRecipe(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.recipes, state.favorites]);
+
+  const handleOpenRecipe = (recipeId: string) => {
+    const recipe = state.recipes.find((r) => r.id === recipeId) || null;
+    setSelectedRecipe(recipe);
+    setDetailOpen(true);
   };
 
-  const handleRemove = (id: string) => {
-    const result = removeFavorite(id);
-    toast[result.status === "success" ? "success" : "error"](result.message);
+  const handleOpenChange = (open: boolean) => {
+    setDetailOpen(open);
+    if (!open && selectedRecipe) {
+      const latest = state.recipes.find((r) => r.id === selectedRecipe.id) || null;
+      setSelectedRecipe(latest);
+    }
   };
 
-  const hasFavorites = favorites.length > 0;
+  const hasFavorites = favoriteRecipes.length > 0;
 
   return (
-    <div className="min-h-screen w-full bg-[#f5f1ea] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-50 flex flex-col">
-      {/* Top band / intro */}
-      <section className="w-full border-b border-neutral-200/70 dark:border-neutral-800/80 bg-white/70 dark:bg-neutral-900/60 backdrop-blur-sm">
-        <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-10 lg:py-14 flex flex-col gap-6">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-            <div className="space-y-3 max-w-2xl">
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, ease: "easeOut" }}
-                className="inline-flex items-center gap-2 text-xs tracking-[0.22em] uppercase text-neutral-500 dark:text-neutral-400"
-              >
-                <span className="h-px w-8 bg-neutral-400/70 dark:bg-neutral-600/70" />
-                Atelier Collection
-              </motion.p>
+    <div className="w-full min-h-[calc(100vh-4rem)] bg-gradient-to-b from-[#f8eee6] via-[#fdf7f2] to-[#f3ece3] dark:from-[#15100e] dark:via-[#171211] dark:to-[#120f0d] pt-8 pb-16">
+      <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 flex flex-col gap-8">
+        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div className="space-y-2 max-w-2xl">
+            <p className="text-sm font-medium uppercase tracking-[0.22em] text-amber-700/80 dark:text-amber-300/80">
+              Saved tastes
+            </p>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold font-['Playfair_Display'] text-stone-900 dark:text-amber-50 whitespace-normal break-words">
+              Your Saffron & Sage favorites
+            </h1>
+            <p className="text-sm sm:text-base text-stone-700/90 dark:text-stone-300/90 max-w-xl">
+              A warm little archive of the recipes you keep coming back to. Revisit, un-save,
+              or wander out to discover something new.
+            </p>
+          </div>
 
-              <motion.h1
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: "easeOut", delay: 0.05 }}
-                className="text-3xl sm:text-4xl lg:text-5xl tracking-tight leading-tight font-serif"
+          <Card className="border-none bg-white/70 dark:bg-stone-900/80 backdrop-blur-md shadow-sm flex-1 max-w-md">
+            <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3">
+              <div className="space-y-1 min-w-0">
+                <CardTitle className="text-base font-semibold text-stone-900 dark:text-amber-50 whitespace-normal break-words">
+                  Shelf count
+                </CardTitle>
+                <CardDescription className="text-xs text-stone-600 dark:text-stone-300/80 whitespace-normal break-words">
+                  Favorites live only in this browser. This is a fully mocked, frontend-only
+                  experience—no accounts, no servers.
+                </CardDescription>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200 px-3 py-1 text-xs font-medium">
+                  <HeartOff className="w-3.5 h-3.5" />
+                  {favoriteRecipes.length} saved
+                </span>
+                {favoriteRecipes.some((r) => r.isGenerated) && (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 text-amber-900/80 dark:text-amber-100 dark:border-amber-400/60 bg-amber-50/60 dark:bg-amber-900/20 text-[10px] tracking-wide uppercase"
+                  >
+                    mock ai recipes included
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 flex flex-wrap gap-3 items-center">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full border-stone-300/80 text-stone-800 dark:border-stone-700 dark:text-stone-100 bg-amber-50/40 dark:bg-stone-900/80 hover:bg-amber-100/80 dark:hover:bg-stone-800/80 px-4"
+                onClick={() => navigate('/browse')}
               >
-                Curated recipes, held quietly in this browser.
-              </motion.h1>
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                Browse more
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full text-amber-900 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-900/30 px-3"
+                onClick={() => navigate('/generate')}
+              >
+                Generate from pantry
+                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            </CardContent>
+          </Card>
+        </header>
 
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, ease: "easeOut", delay: 0.12 }}
-                className="text-sm sm:text-base leading-relaxed text-neutral-600 dark:text-neutral-300 max-w-xl"
-              >
-                Favorites in AtelierAI Recipes are entirely local &mdash; a private, in-browser collection
-                composed by the mock generation engine in <span className="italic">src/mock.ts</span> and
-                preserved via localStorage. There is no backend, only your current device.
-              </motion.p>
+        <Separator className="bg-stone-200/80 dark:bg-stone-800/80" />
+
+        {!hasFavorites ? (
+          <section className="w-full flex flex-col items-center justify-center text-center py-16 sm:py-20">
+            <Card className="w-full max-w-xl bg-white/80 dark:bg-stone-950/80 border-dashed border-amber-300/70 dark:border-amber-800/70 shadow-sm">
+              <CardContent className="pt-8 pb-8 flex flex-col items-center gap-6">
+                <div className="inline-flex items-center justify-center rounded-full bg-amber-100/90 dark:bg-amber-900/40 text-amber-800 dark:text-amber-100 p-4">
+                  <HeartOff className="w-7 h-7" />
+                </div>
+                <div className="space-y-2 max-w-md">
+                  <h2 className="text-xl sm:text-2xl font-semibold font-['Playfair_Display'] text-stone-900 dark:text-amber-50 whitespace-normal break-words">
+                    No favorites yet—your shelf is waiting
+                  </h2>
+                  <p className="text-sm sm:text-base text-stone-700/90 dark:text-stone-300/90">
+                    Tap the little heart on any recipe to tuck it onto this page. Or let our
+                    mock "AI" dream something up from whatever is in your kitchen.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <Button
+                    size="sm"
+                    className="rounded-full bg-amber-700 hover:bg-amber-800 text-amber-50 shadow-sm px-5"
+                    onClick={() => navigate('/browse')}
+                  >
+                    Browse recipes
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full border-stone-300/90 text-stone-800 dark:border-stone-700 dark:text-stone-50 bg-amber-50/50 dark:bg-stone-900/70 hover:bg-amber-100/80 dark:hover:bg-stone-800/80 px-4"
+                    onClick={() => navigate('/generate')}
+                  >
+                    Mock generate
+                    <Sparkles className="w-3.5 h-3.5 ml-1.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        ) : (
+          <section className="w-full flex flex-col gap-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-lg sm:text-xl font-semibold text-stone-900 dark:text-amber-50 font-['Playfair_Display'] whitespace-normal break-words">
+                  Saved recipes
+                </h2>
+                <Badge className="rounded-full bg-amber-600/90 text-amber-50 px-3 py-1 text-xs font-medium">
+                  {favoriteRecipes.length} {favoriteRecipes.length === 1 ? 'recipe' : 'recipes'}
+                </Badge>
+              </div>
+              <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-300/80 max-w-md">
+                Favorites are stored in localStorage on this device only—this is a fully mocked
+                frontend demo with no real backend.
+              </p>
             </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: "easeOut", delay: 0.18 }}
-              className="flex flex-wrap items-center gap-3"
-            >
-              <Button
-                asChild
-                variant="outline"
-                className="rounded-full border-neutral-300/80 bg-white/70 text-neutral-900 hover:bg-neutral-900 hover:text-white dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-50 dark:hover:bg-neutral-50 dark:hover:text-neutral-900 transition-colors duration-200 text-xs sm:text-sm px-4 py-2"
-              >
-                <Link to="/generate" className="inline-flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Generate another recipe
-                </Link>
-              </Button>
-
-              {hasFavorites && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={handleClearAll}
-                  disabled={isClearing}
-                  className="rounded-full border border-transparent text-xs sm:text-sm text-neutral-600 hover:text-neutral-900 hover:border-neutral-400/80 bg-transparent dark:text-neutral-300 dark:hover:text-neutral-50 dark:hover:border-neutral-600/80 px-4 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Clear all favorites
-                  </span>
-                </Button>
-              )}
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Content section */}
-      <main className="flex-1 w-full">
-        <section className="w-full py-10 lg:py-14">
-          <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 space-y-8">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, ease: "easeOut" }}
-            >
-              <Separator className="bg-neutral-200/80 dark:bg-neutral-800/80" />
-            </motion.div>
-
-            {!hasFavorites ? (
+            <AnimatePresence mode="sync">
               <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: "easeOut", delay: 0.05 }}
-                className="w-full flex justify-center"
+                key={favoriteRecipes.length}
+                variants={gridVariants}
+                initial="hidden"
+                animate="visible"
+                exit="hidden"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
               >
-                <Card className="w-full md:w-3/4 xl:w-2/3 bg-white/80 dark:bg-neutral-900/80 border-neutral-200/80 dark:border-neutral-800/80 shadow-sm rounded-3xl overflow-hidden">
-                  <div className="grid md:grid-cols-[2fr,3fr]">
-                    <div className="relative hidden md:block">
-                      <div
-                        className="absolute inset-0 bg-cover bg-center"
-                        style={{
-                          backgroundImage:
-                            "url('https://images.pexels.com/photos/4085266/pexels-photo-4085266.jpeg?auto=compress&cs=tinysrgb&w=1600')",
-                        }}
-                      />
-                      <div className="relative h-full w-full bg-gradient-to-r from-[#f5f1ea] via-[#f5f1ea]/80 to-transparent dark:from-neutral-950 dark:via-neutral-950/90" />
-                    </div>
-
-                    <CardContent className="p-7 sm:p-9 flex flex-col justify-center">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="h-9 w-9 rounded-full border border-neutral-300/80 dark:border-neutral-700/80 flex items-center justify-center">
-                          <HeartCrack className="h-4.5 w-4.5 text-neutral-500 dark:text-neutral-400" />
-                        </div>
-                        <div className="space-y-1">
-                          <CardTitle className="text-base sm:text-lg font-serif tracking-tight">
-                            Your Atelier is quietly empty.
-                          </CardTitle>
-                          <CardDescription className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
-                            Start by composing a dish with the mock AI generator, then mark it as a favorite to
-                            keep it here, locally, in this browser.
-                          </CardDescription>
-                        </div>
-                      </div>
-
-                      <p className="text-xs sm:text-sm leading-relaxed text-neutral-700 dark:text-neutral-300 mb-6">
-                        AtelierAI Recipes never touches a server. All generation logic runs against curated
-                        templates and ingredients in <span className="font-mono text-[0.7rem]">src/mock.ts</span>,
-                        and favorites are tucked into <span className="font-mono text-[0.7rem]">localStorage</span>.
-                        Clearing your browser or switching devices will reset this gallery.
-                      </p>
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        <Button
+                {favoriteRecipes.map((recipe) => (
+                  <motion.div key={recipe.id} variants={itemVariants} layout>
+                    <RecipeCard
+                      recipe={recipe}
+                      isFavorite={state.favorites.includes(recipe.id)}
+                      onOpen={handleOpenRecipe}
+                      onToggleFavorite={onToggleFavorite}
+                    />
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <Button
+                        size="sm"
+                        asChild
+                        variant="ghost"
+                        className="h-7 px-2.5 text-xs rounded-full text-amber-900 dark:text-amber-100 hover:bg-amber-100/80 dark:hover:bg-amber-900/40"
+                      >
+                        <button
                           type="button"
-                          onClick={() => navigate("/generate")}
-                          className="rounded-full bg-neutral-900 text-neutral-50 hover:bg-neutral-800 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-200 text-xs sm:text-sm px-4 sm:px-5 py-2 transition-colors duration-200"
+                          aria-label={`Open ${recipe.title}`}
+                          onClick={() => handleOpenRecipe(recipe.id)}
                         >
-                          <span className="inline-flex items-center gap-2">
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Compose a first recipe
-                          </span>
-                        </Button>
-
-                        <span className="text-[0.7rem] sm:text-xs text-neutral-500 dark:text-neutral-500">
-                          No sign-in, no sync &mdash; this is a deliberate, local-only mock experience.
-                        </span>
-                      </div>
-                    </CardContent>
-                  </div>
-                </Card>
+                          Open details
+                        </button>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs rounded-full border-rose-200/70 text-rose-700 hover:bg-rose-50/80 dark:border-rose-900/60 dark:text-rose-200 dark:hover:bg-rose-950/60 flex items-center gap-1.5"
+                        type="button"
+                        onClick={() => onToggleFavorite(recipe.id)}
+                      >
+                        <BookmarkMinus className="w-3.5 h-3.5" />
+                        Remove
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))}
               </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: "easeOut", delay: 0.05 }}
-                className="space-y-6"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-3">
-                  <div className="space-y-1">
-                    <h2 className="text-sm font-medium tracking-[0.22em] uppercase text-neutral-500 dark:text-neutral-400">
-                      Saved compositions
-                    </h2>
-                    <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
-                      {favorites.length === 1
-                        ? "One recipe living in this browser."
-                        : `${favorites.length.toString().padStart(2, "0")} locally-favorited recipes in your Atelier.`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 text-[0.7rem] sm:text-xs text-neutral-500 dark:text-neutral-500">
-                    <span className="h-px w-10 bg-neutral-300/80 dark:bg-neutral-700/80" />
-                    <span>
-                      Generated by a purely mocked engine &mdash; nothing leaves this window.
-                    </span>
-                  </div>
-                </div>
+            </AnimatePresence>
+          </section>
+        )}
+      </div>
 
-                <FavoritesMasonry
-                  favorites={favorites}
-                  onRemove={handleRemove}
-                />
-              </motion.div>
-            )}
-          </div>
-        </section>
-      </main>
+      <RecipeDetailSheet
+        recipe={selectedRecipe}
+        isOpen={detailOpen && !!selectedRecipe}
+        isFavorite={selectedRecipe ? state.favorites.includes(selectedRecipe.id) : false}
+        onOpenChange={handleOpenChange}
+        onToggleFavorite={onToggleFavorite}
+      />
     </div>
   );
 };

@@ -1,127 +1,112 @@
 import React from "react";
-import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Separator } from "@/components/ui/shadcn";
+import { motion } from "framer-motion";
+import { Separator, Button } from "@/components/ui/shadcn";
+
+// NOTE: This component is part of a 100% frontend-only app.
+// All "AI" recipe generation in Saffron & Sage is fully mocked
+// on the client with localStorage persistence handled in src/mock.ts.
+
+const year = new Date().getFullYear();
 
 const footerLinks = [
-  {
-    label: "About",
-    href: "#about",
-  },
-  {
-    label: "Accessibility",
-    href: "#accessibility",
-  },
-  {
-    label: "Source",
-    href: "https://github.com/",
-    external: true,
-  },
+  { label: "Browse recipes", to: "/browse" },
+  { label: "Generate recipe", to: "/generate" },
 ];
 
-const Footer: React.FC = () => {
-  const year = new Date().getFullYear();
+const subtleFade = {
+  initial: { opacity: 0, y: 4 },
+  animate: { opacity: 1, y: 0 },
+};
 
+const Footer: React.FC = () => {
   return (
-    <footer className="w-full bg-[#f3ebe2] text-[#3e2c23] border-t border-[#decfbe] mt-12">
-      {/* Outer full-width shell with soft max visual width */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-10 lg:py-12"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 items-start min-w-0">
-          {/* Brand + description */}
-          <div className="md:col-span-6 lg:col-span-7 min-w-0 flex flex-col gap-4">
+    <footer className="w-full border-t border-amber-100/60 bg-gradient-to-t from-stone-950 via-stone-950 to-stone-900/95 text-amber-50 px-6 lg:px-12 pt-10 pb-8 mt-16">
+      <div className="w-full max-w-[1600px] mx-auto">
+        <motion.div
+          className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between"
+          initial={subtleFade.initial}
+          whileInView={subtleFade.animate}
+          viewport={{ once: true, amount: 0.2 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        >
+          {/* Brand + tone */}
+          <div className="max-w-xl space-y-3">
             <div className="flex items-center gap-2.5">
-              {/* Inline logo echoing header style, but calmer */}
-              <div
-                aria-hidden="true"
-                className="h-8 w-8 rounded-full bg-gradient-to-tr from-[#d94f4f] to-[#e87a5f] flex items-center justify-center shadow-sm"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 text-[#fdf7f2]"
-                  role="img"
-                >
-                  <path
-                    d="M5 20c0-4.418 3.134-8 7-8s7 3.582 7 8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M12 4.5c-1.657 0-3 1.343-3 3 0 1.185.69 2.208 1.69 2.7.409.198.61.297 1.31.297s.901-.099 1.31-.297A3.002 3.002 0 0 0 15 7.5c0-1.657-1.343-3-3-3Z"
-                    fill="currentColor"
-                  />
-                </svg>
+              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-400 via-amber-500 to-rose-400 shadow-md shadow-amber-900/40 flex items-center justify-center text-stone-950 text-sm font-semibold tracking-tight">
+                SS
               </div>
-              <span className="text-base font-semibold tracking-[0.16em] uppercase text-[#4c3328]">
-                TactileChef
-              </span>
+              <div>
+                <p className="text-sm font-semibold tracking-[0.2em] uppercase text-amber-300/80">
+                  Saffron &amp; Sage
+                </p>
+                <p className="text-xs text-amber-100/70">
+                  A warm, lifestyle‑first recipe companion.
+                </p>
+              </div>
             </div>
-            <p className="text-sm md:text-[0.95rem] leading-relaxed text-[#6c5241] max-w-xl">
-              Crafted as a <span className="font-medium">100% frontend-only mock</span>,
-              TactileChef simulates an AI-powered recipe studio entirely in your
-              browser. No accounts, no backend – just tactile ideas and saved
-              favorites living in localStorage.
+            <p className="text-sm leading-relaxed text-amber-50/80">
+              Drift from inspiration to the dinner table with gently guided, tactile
+              cooking. Saffron &amp; Sage is entirely browser‑based: your favorites and
+              mock "AI" creations live on this device only.
             </p>
           </div>
 
-          {/* Navigation + meta */}
-          <div className="md:col-span-6 lg:col-span-5 min-w-0 flex flex-col gap-6 md:items-end md:text-right">
-            <nav aria-label="Footer" className="flex flex-wrap gap-3 md:justify-end">
-              {footerLinks.map((link) => {
-                const baseClasses =
-                  "text-sm font-medium text-[#7b5a46] hover:text-[#d94f4f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d94f4f] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f3ebe2] transition-colors";
-
-                if (link.external) {
-                  return (
-                    <a
-                      key={link.label}
-                      href={link.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={baseClasses}
-                    >
-                      {link.label}
-                    </a>
-                  );
-                }
-
-                if (link.href.startsWith("/")) {
-                  return (
-                    <Link key={link.label} to={link.href} className={baseClasses}>
-                      {link.label}
-                    </Link>
-                  );
-                }
-
-                return (
-                  <a key={link.label} href={link.href} className={baseClasses}>
+          {/* Quick nav + call to explore */}
+          <div className="flex flex-col items-start gap-3 md:items-end md:text-right">
+            <p className="text-xs font-medium tracking-wide text-amber-200/80 uppercase">
+              Follow your appetite
+            </p>
+            <div className="flex flex-wrap gap-2.5">
+              {footerLinks.map((link) => (
+                <Button
+                  key={link.to}
+                  asChild
+                  variant="outline"
+                  className="border-amber-300/60 bg-transparent/10 hover:bg-amber-100/10 text-amber-50 hover:text-amber-50 rounded-full px-4 py-1.5 text-xs font-medium tracking-wide transition-colors duration-200"
+                >
+                  <Link to={link.to} aria-label={link.label}>
                     {link.label}
-                  </a>
-                );
-              })}
-            </nav>
+                  </Link>
+                </Button>
+              ))}
+            </div>
+            <p className="text-[11px] text-amber-100/70 max-w-xs md:max-w-sm">
+              All suggestions are stylistic, client‑side mockups. They&apos;re meant for
+              cozy inspiration, not clinical nutrition or professional advice.
+            </p>
+          </div>
+        </motion.div>
 
-            <div className="w-full md:w-auto flex flex-col gap-2 text-xs text-[#8b6a55] mt-2">
-              <Separator className="bg-[#e0d1c1]" />
-              <p>
-                © {year} TactileChef. Built as an editorial-style prototype to
-                showcase client-side AI recipe flows.
-              </p>
-              <p>
-                Recipe content, preferences, and ratings are all{' '}
-                <span className="font-medium">mocked in-memory</span> with
-                localStorage persistence for your browser only.
-              </p>
+        <div className="mt-8 space-y-4">
+          <Separator className="bg-amber-100/15" />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] text-amber-100/60">
+              © {year} Saffron &amp; Sage. Crafted as a fully frontend, local‑only
+              experience with mock recipe generation.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-amber-100/60">
+              <span className="whitespace-nowrap">
+                Mock "AI" only – no accounts, no cloud, no servers.
+              </span>
+              <span className="hidden sm:inline text-amber-100/30">·</span>
+              <button
+                type="button"
+                className="underline underline-offset-4 decoration-amber-200/60 hover:decoration-amber-200/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/90 focus-visible:ring-offset-2 focus-visible:ring-offset-stone-950 rounded-sm transition-colors duration-150"
+                onClick={() => {
+                  // purely informational; could later hook into a modal
+                  // eslint-disable-next-line no-alert
+                  window.alert(
+                    'Saffron & Sage runs entirely in your browser. All recipes, favorites, and "AI" generations are mocked and saved only to this device using localStorage.',
+                  );
+                }}
+              >
+                Learn how your data stays local
+              </button>
             </div>
           </div>
         </div>
-      </motion.div>
+      </div>
     </footer>
   );
 };
