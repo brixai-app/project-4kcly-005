@@ -16,24 +16,23 @@ export const APP_ROUTES: RouteItem[] = [
     "showInNav": true
   },
   {
-    "path": "/generate",
-    "name": "RecipeGeneratorPage",
-    "filePath": "src/pages/RecipeGeneratorPage.tsx",
-    "navLabel": "Generate Recipe",
+    "path": "/search",
+    "name": "RecipeSearchPage",
+    "filePath": "src/pages/RecipeSearchPage.tsx",
+    "navLabel": "Search",
     "showInNav": true
   },
   {
-    "path": "/favorites",
-    "name": "FavoritesPage",
-    "filePath": "src/pages/FavoritesPage.tsx",
-    "navLabel": "Favorites",
-    "showInNav": true
+    "path": "/recipe/:id",
+    "name": "RecipeDetailPage",
+    "filePath": "src/pages/RecipeDetailPage.tsx",
+    "showInNav": false
   },
   {
-    "path": "/about",
-    "name": "AboutPage",
-    "filePath": "src/pages/AboutPage.tsx",
-    "navLabel": "About",
+    "path": "/profile",
+    "name": "ProfilePage",
+    "filePath": "src/pages/ProfilePage.tsx",
+    "navLabel": "Profile",
     "showInNav": true
   }
 ];
@@ -44,15 +43,11 @@ export const NAV_LINKS: Array<{ path: string; label: string }> = [
     "label": "Home"
   },
   {
-    "path": "/generate",
-    "label": "Generate Recipe"
+    "path": "/search",
+    "label": "Search"
   },
   {
-    "path": "/favorites",
-    "label": "Favorites"
-  },
-  {
-    "path": "/about",
-    "label": "About"
+    "path": "/profile",
+    "label": "Profile"
   }
 ];

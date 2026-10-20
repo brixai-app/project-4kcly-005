@@ -1,12 +1,14 @@
-import React from "react";
+import React, { MouseEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { BookmarkPlus, BookmarkMinus, ExternalLink } from "lucide-react";
+import { Bookmark, Clock, Star } from "lucide-react";
+
 import {
   Card,
+  CardContent,
   CardHeader,
   CardTitle,
   CardDescription,
-  CardContent,
   CardFooter,
   Badge,
   Button,
@@ -14,231 +16,247 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/shadcn";
-import {
-  GeneratedRecipe,
-  FavoriteRecipe,
-  getCuisineById,
-  getDietaryLabel,
-} from "@/mock";
-
-export type RecipeCardMode = "save" | "remove";
+import { Recipe, useMockStore, toggleSavedRecipe } from "@/mock";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export interface RecipeCardProps {
-  recipe: GeneratedRecipe | FavoriteRecipe;
-  /**
-   * When true, shows a primary action button (save/remove).
-   * Helpful when reusing the card in read-only contexts like About copy.
-   */
-  showPrimaryAction?: boolean;
-  /**
-   * Controls whether the card is currently favorited. In generator view this
-   * may be false even for the same logical recipe until user clicks save.
-   */
-  isFavorited?: boolean;
-  /**
-   * Explicit mode override. When omitted, we infer from isFavorited flag.
-   */
-  mode?: RecipeCardMode;
-  /**
-   * Called when user clicks the primary action. Parent is responsible for
-   * invoking saveFavorite/removeFavorite from the mocked state in src/mock.ts
-   * and triggering Sonner toasts.
-   */
-  onPrimaryAction?: (recipe: GeneratedRecipe | FavoriteRecipe) => void;
-  /**
-   * Optional compact variant for dense layouts.
-   */
-  variant?: "default" | "compact";
+  recipe: Recipe;
+  /** Optional className for outer wrapper */
   className?: string;
 }
 
-const hoverMotion = {
-  initial: { y: 0, opacity: 0.98 },
-  whileHover: { y: -4, boxShadow: "0 18px 45px rgba(15, 23, 42, 0.22)" },
-  whileTap: { scale: 0.99 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.22, ease: [0.23, 0.68, 0.24, 0.99] },
+// Note: This component uses fully mocked client-side state via src/mock.ts.
+// There is NO real backend – save/unsave and data are purely in-browser.
+
+const MotionCard = motion(Card);
+const MotionButton = motion(Button);
+
+const hoverVariants = {
+  initial: { y: 0, boxShadow: "0 0 0 rgba(0,0,0,0)" },
+  hover: {
+    y: -4,
+    boxShadow:
+      "0 18px 45px rgba(15, 23, 42, 0.16)",
+    transition: {
+      duration: 0.22,
+      ease: [0.215, 0.61, 0.355, 1],
+    },
+  },
 };
 
-const buttonMotion = {
-  whileHover: { y: -1 },
-  whileTap: { scale: 0.97 },
-  transition: { duration: 0.16, ease: "easeOut" as const },
+const imageVariants = {
+  initial: { scale: 1.02, y: 0 },
+  hover: {
+    scale: 1.05,
+    y: -4,
+    transition: {
+      duration: 0.35,
+      ease: [0.22, 0.61, 0.36, 1],
+    },
+  },
 };
 
-function getPrimaryLabel(mode: RecipeCardMode, isFavorited: boolean | undefined): string {
-  if (mode === "remove") return "Remove from favorites";
-  return isFavorited ? "Saved" : "Save to favorites";
-}
+const RecipeCard: React.FC<RecipeCardProps> = ({ recipe, className }) => {
+  const navigate = useNavigate();
+  const savedIds = useMockStore((s) => s.savedRecipeIds);
+  const isSaved = savedIds.includes(recipe.id);
 
-function getPrimaryIcon(mode: RecipeCardMode, isFavorited: boolean | undefined) {
-  if (mode === "remove") return <BookmarkMinus className="h-4 w-4" />;
-  return <BookmarkPlus className="h-4 w-4" />;
-}
-
-export const RecipeCard: React.FC<RecipeCardProps> = ({
-  recipe,
-  showPrimaryAction = true,
-  isFavorited,
-  mode,
-  onPrimaryAction,
-  variant = "default",
-  className,
-}) => {
-  const effectiveMode: RecipeCardMode = mode ?? (isFavorited ? "remove" : "save");
-  const cuisine = getCuisineById(recipe.cuisineId);
-
-  const handlePrimaryClick = () => {
-    if (!onPrimaryAction) return;
-    onPrimaryAction(recipe);
+  const handleCardClick = () => {
+    navigate(`/recipes/${recipe.id}`);
   };
 
-  const containerPadding = variant === "compact" ? "p-4" : "p-6";
-  const showImage = Boolean(recipe.imageUrl);
+  const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleCardClick();
+    }
+  };
+
+  const handleToggleSave = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    toggleSavedRecipe(recipe.id);
+
+    toast(isSaved ? "Removed from saved" : "Recipe saved", {
+      description: isSaved
+        ? "This recipe is no longer in your saved collection."
+        : "Find it anytime in your profile's saved recipes.",
+    });
+  };
+
+  const accentBg = recipe.accentColor || "#E29578";
 
   return (
-    <motion.div
-      {...hoverMotion}
-      className={`relative h-full ${className ?? ""}`}
+    <MotionCard
+      role="article"
+      tabIndex={0}
+      aria-label={recipe.title}
+      className={cn(
+        "group flex h-full flex-col overflow-hidden border border-slate-200/70 bg-[rgb(252,248,244)]/90",
+        "dark:border-slate-800/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-3xl",
+        "transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/70",
+        className
+      )}
+      initial="initial"
+      whileHover="hover"
+      variants={hoverVariants}
+      onClick={handleCardClick}
+      onKeyDown={handleKeyDown}
     >
-      <Card
-        className={`group flex h-full flex-col overflow-hidden border border-zinc-200/70 bg-zinc-50/80 text-zinc-900 shadow-sm backdrop-blur-sm transition-colors duration-200 hover:border-zinc-300/90 dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:text-zinc-50 dark:hover:border-zinc-700`}
-      >
-        {showImage && (
-          <div className="relative aspect-[16/9] w-full overflow-hidden bg-zinc-200/70 dark:bg-zinc-800">
-            <img
-              src={recipe.imageUrl}
-              alt={recipe.title}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
-              loading="lazy"
-            />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/55 via-zinc-950/10 to-transparent" />
-            {cuisine && (
-              <div className="absolute bottom-3 left-4 flex items-center gap-2">
-                <Badge className="border border-white/40 bg-zinc-950/40 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-zinc-50 backdrop-blur">
-                  {cuisine.name}
-                </Badge>
-              </div>
-            )}
-          </div>
-        )}
-
-        <CardHeader className={`${containerPadding} pb-3`}
+      <div className="relative overflow-hidden">
+        <motion.div
+          variants={imageVariants}
+          className="relative h-52 w-full overflow-hidden bg-slate-200 dark:bg-slate-800"
         >
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2">
-              <CardTitle className="font-['Playfair_Display'] text-xl tracking-tight text-zinc-950 dark:text-zinc-50 sm:text-2xl">
-                {recipe.title}
-              </CardTitle>
-              {"description" in recipe && recipe.description && (
-                <CardDescription className="max-w-2xl text-sm leading-relaxed text-zinc-600 dark:text-zinc-300">
-                  {recipe.description}
-                </CardDescription>
+          <img
+            src={recipe.heroImageUrl}
+            alt={recipe.title}
+            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+            loading="lazy"
+          />
+
+          {/* Organic color wash overlay */}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-60 mix-blend-multiply"
+            style={{ background: accentBg }}
+          />
+
+          {/* Soft bottom gradient for legibility */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+
+          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 px-5 pb-4 pt-6 text-white">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <CardTitle className="font-['Playfair_Display'] text-lg font-semibold leading-snug tracking-tight text-white whitespace-normal break-words">
+                  {recipe.title}
+                </CardTitle>
+                {recipe.subtitle && (
+                  <CardDescription className="text-xs font-medium text-slate-100/90 whitespace-normal break-words">
+                    {recipe.subtitle}
+                  </CardDescription>
+                )}
+              </div>
+
+              {typeof recipe.averageRating === "number" && recipe.ratingCount ? (
+                <div className="flex shrink-0 flex-col items-end gap-0.5 rounded-full bg-black/30 px-3 py-1 text-right text-xs font-medium text-amber-100 backdrop-blur-sm">
+                  <span className="flex items-center gap-1">
+                    <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                    <span>{recipe.averageRating.toFixed(1)}</span>
+                  </span>
+                  <span className="text-[10px] text-amber-50/80">
+                    {recipe.ratingCount} review{recipe.ratingCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex shrink-0 items-center rounded-full bg-black/30 px-3 py-1 text-[11px] font-medium text-amber-100 backdrop-blur-sm">
+                  New
+                </div>
               )}
             </div>
 
-            {showPrimaryAction && (
-              <motion.div {...buttonMotion} className="shrink-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={effectiveMode === "remove" ? "outline" : "default"}
-                      size="sm"
-                      onClick={handlePrimaryClick}
-                      className={`flex items-center gap-2 rounded-full border border-zinc-800/80 bg-zinc-900 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-zinc-50 shadow-sm transition-colors duration-200 hover:bg-zinc-800 dark:border-zinc-200/80 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-100 ${
-                        effectiveMode === "remove"
-                          ? "border-zinc-400/80 bg-transparent text-zinc-800 hover:bg-zinc-100 dark:border-zinc-500/80 dark:bg-transparent dark:text-zinc-100 dark:hover:bg-zinc-800"
-                          : ""
-                      } ${isFavorited && effectiveMode === "save" ? "cursor-default opacity-80" : ""}`}
-                      disabled={effectiveMode === "save" && isFavorited}
-                    >
-                      {getPrimaryIcon(effectiveMode, isFavorited)}
-                      <span>{getPrimaryLabel(effectiveMode, isFavorited)}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    align="end"
-                    className="border border-zinc-800/80 bg-zinc-950 text-xs text-zinc-50 dark:border-zinc-200/80 dark:bg-zinc-50 dark:text-zinc-900"
-                  >
-                    {effectiveMode === "remove"
-                      ? "This updates only your local Atelier collection in this browser."
-                      : "Favoriting stays entirely in localStorage on this device — no backend, no account."}
-                  </TooltipContent>
-                </Tooltip>
-              </motion.div>
-            )}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {cuisine && (
-              <Badge className="border border-zinc-300/80 bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-800 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-100">
-                {cuisine.region}
-              </Badge>
-            )}
-            {recipe.dietaryTags?.map((tag) => (
+            <div className="flex flex-wrap items-center gap-1.5">
               <Badge
-                key={tag}
-                variant="outline"
-                className="border-zinc-300/80 bg-zinc-100/70 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-700 dark:border-zinc-700/80 dark:bg-zinc-900/70 dark:text-zinc-200"
+                className="rounded-full bg-white/90 px-2.5 py-0.5 text-[11px] font-medium text-slate-900 shadow-sm backdrop-blur-sm dark:bg-slate-900/90 dark:text-amber-100"
               >
-                {getDietaryLabel(tag)}
+                {recipe.cuisine.replace("-", " ")}
               </Badge>
-            ))}
-          </div>
-        </CardHeader>
-
-        <CardContent className={`${containerPadding} pt-0`}
-        >
-          <div className="grid gap-6 border-t border-dashed border-zinc-200/80 pt-5 text-sm text-zinc-800 dark:border-zinc-800/80 dark:text-zinc-100 sm:grid-cols-5 sm:gap-7">
-            <div className="sm:col-span-2">
-              <h3 className="font-['Playfair_Display'] text-xs font-semibold tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
-                INGREDIENTS
-              </h3>
-              <ul className="mt-3 space-y-1.5 text-[13px] leading-relaxed">
-                {recipe.ingredients.map((line, idx) => (
-                  <li key={idx} className="flex gap-2">
-                    <span className="mt-1 h-[3px] w-[10px] shrink-0 rounded-full bg-zinc-800/70 dark:bg-zinc-200/80" />
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="sm:col-span-3">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-['Playfair_Display'] text-xs font-semibold tracking-[0.22em] text-zinc-500 dark:text-zinc-400">
-                  STUDIO METHOD
-                </h3>
-                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.22em] text-zinc-400 dark:text-zinc-500">
-                  <ExternalLink className="h-3 w-3" />
-                  <span>In-Browser Mock AI</span>
-                </div>
-              </div>
-              <ol className="mt-3 space-y-2.5 text-[13px] leading-relaxed">
-                {recipe.instructions.map((step, idx) => (
-                  <li key={idx} className="flex gap-3">
-                    <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border border-zinc-300/80 bg-white/80 text-center text-[11px] font-semibold leading-[18px] text-zinc-800 shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-50">
-                      {idx + 1}
-                    </span>
-                    <span>{step}</span>
-                  </li>
-                ))}
-              </ol>
+              {recipe.dietTags.slice(0, 2).map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="outline"
+                  className="rounded-full border-white/60 bg-white/90 px-2.5 py-0.5 text-[11px] font-medium lowercase text-slate-900 shadow-sm backdrop-blur-sm dark:border-slate-600/80 dark:bg-slate-900/80 dark:text-slate-100"
+                >
+                  {tag}
+                </Badge>
+              ))}
+              {recipe.dietTags.length > 2 && (
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-white/50 bg-transparent px-2 py-0.5 text-[11px] font-medium text-slate-100 backdrop-blur-sm dark:border-slate-600/60"
+                >
+                  +{recipe.dietTags.length - 2} more
+                </Badge>
+              )}
             </div>
           </div>
-        </CardContent>
+        </motion.div>
+      </div>
 
-        <CardFooter className={`${containerPadding} pt-0`}
-        >
-          <div className="flex w-full items-center justify-between gap-4 border-t border-dotted border-zinc-200/80 pt-4 text-[11px] uppercase tracking-[0.22em] text-zinc-400 dark:border-zinc-800/80 dark:text-zinc-500">
-            <span>
-              Crafted locally in this browser · Mock AI · {new Date(recipe.createdAt).toLocaleDateString()}
+      <CardHeader className="space-y-3 pb-2 pt-4">
+        <p className="text-sm text-slate-700/90 dark:text-slate-100/90 whitespace-normal break-words font-['Inter']">
+          {recipe.description}
+        </p>
+      </CardHeader>
+
+      <CardContent className="mt-auto flex flex-col gap-3 pb-2">
+        <div className="flex items-center justify-between gap-4 text-xs font-medium text-slate-700/90 dark:text-slate-200/90">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:bg-slate-100/5 dark:text-slate-100"
+            >
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: accentBg }}
+              />
+              {recipe.difficulty === "easy"
+                ? "Relaxed"
+                : recipe.difficulty === "medium"
+                ? "Balanced"
+                : "Weekend Project"}
             </span>
-            <span className="hidden sm:inline-flex">No server, no upload — purely client-side.</span>
           </div>
-        </CardFooter>
-      </Card>
-    </motion.div>
+
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
+              <span>
+                {recipe.prepTimeMinutes} min prep
+              </span>
+            </span>
+            <span className="h-1 w-1 rounded-full bg-slate-400/60 dark:bg-slate-500/80" />
+            <span>{recipe.cookTimeMinutes} min cook</span>
+            <span className="h-1 w-1 rounded-full bg-slate-400/60 dark:bg-slate-500/80" />
+            <span>Serves {recipe.servings}</span>
+          </div>
+        </div>
+      </CardContent>
+
+      <CardFooter className="flex items-center justify-between gap-3 border-t border-slate-200/70 bg-white/70 px-5 py-3.5 dark:border-slate-800/80 dark:bg-slate-900/80">
+        <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+          Tap to see full recipe · ingredients · reviews
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <MotionButton
+              type="button"
+              variant={isSaved ? "default" : "outline"}
+              size="icon"
+              aria-pressed={isSaved}
+              aria-label={isSaved ? "Unsave recipe" : "Save recipe"}
+              onClick={handleToggleSave}
+              whileTap={{ scale: 0.9 }}
+              className={cn(
+                "relative inline-flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-150",
+                isSaved
+                  ? "border-transparent bg-amber-600 text-amber-50 hover:bg-amber-700"
+                  : "border-slate-300 bg-white text-slate-700 hover:border-amber-400 hover:text-amber-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-amber-200"
+              )}
+            >
+              <Bookmark
+                className={cn(
+                  "h-4 w-4 transition-colors duration-150",
+                  isSaved && "fill-current"
+                )}
+              />
+            </MotionButton>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="font-['Inter'] text-xs">
+            {isSaved ? "Remove from saved" : "Save for later"}
+          </TooltipContent>
+        </Tooltip>
+      </CardFooter>
+    </MotionCard>
   );
 };
 

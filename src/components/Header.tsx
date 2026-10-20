@@ -1,248 +1,228 @@
 import React from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Moon, SunMedium, Menu } from "lucide-react";
+import { Menu, User, Bookmark, Settings2, Trash2 } from "lucide-react";
+
 import {
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  Switch,
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  Separator,
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
 } from "@/components/ui/shadcn";
-import { NAV_LINKS } from "@/routes";
 
-// NOTE: Theme preference here is **purely frontend mock state**.
-// It does NOT integrate with any global theming system by default.
-// This app is 100% frontend-only; there is no backend or real auth.
+import { usePreferences, useSavedRecipeIds, clearAllData } from "@/mock";
 
-const headerMotion = {
-  initial: { y: -16, opacity: 0 },
-  animate: { y: 0, opacity: 1 },
-};
+// NOTE: This app is 100% frontend-only. All user, recipe, and preference data
+// are mocked in src/mock.ts with localStorage persistence – there is no backend.
 
-const navItemVariants = {
-  rest: { opacity: 0.8, y: 0 },
-  hover: { opacity: 1, y: -1 },
-};
-
-function useMockThemePreference() {
-  const [isDark, setIsDark] = React.useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const stored = window.localStorage.getItem("atelierai:theme");
-      if (stored === "dark") return true;
-      if (stored === "light") return false;
-      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch {
-      return false;
-    }
-  });
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem("atelierai:theme", isDark ? "dark" : "light");
-    } catch {
-      // ignore storage failures
-    }
-  }, [isDark]);
-
-  const toggle = React.useCallback(() => {
-    setIsDark((prev) => !prev);
-  }, []);
-
-  return { isDark, toggle };
+interface HeaderProps {
+  className?: string;
 }
 
-export const Header: React.FC = () => {
-  const { pathname } = useLocation();
-  const { isDark, toggle } = useMockThemePreference();
+const navItems = [
+  { label: "Home", path: "/" },
+  { label: "Search", path: "/search" },
+  { label: "Profile", path: "/profile" },
+];
 
-  const renderNavLink = (label: string, path: string, index: number) => (
-    <motion.div
-      key={path}
-      variants={navItemVariants}
-      initial="rest"
-      whileHover="hover"
-      transition={{ type: "tween", duration: 0.18 }}
-      className="flex items-center"
-    >
-      <NavLink
-        to={path}
-        className={({ isActive }) =>
-          [
-            "relative px-2 text-sm tracking-wide uppercase transition-colors duration-150",
-            "font-medium",
-            "hover:text-neutral-900 dark:hover:text-neutral-50",
-            isActive
-              ? "text-neutral-900 dark:text-neutral-50"
-              : "text-neutral-600 dark:text-neutral-300",
-          ].join(" ")
-        }
-        aria-label={label}
-      >
-        <span className="pb-1 border-b border-transparent group-hover:border-neutral-800 dark:group-hover:border-neutral-200">
-          {label}
-        </span>
-        <span
-          className={[
-            "pointer-events-none absolute -bottom-1 left-1/2 h-[1px] w-5 -translate-x-1/2 rounded-full",
-            pathname === path
-              ? "bg-neutral-900 dark:bg-neutral-100"
-              : "bg-transparent",
-          ].join(" ")}
-        />
-      </NavLink>
-    </motion.div>
-  );
+const headerVariants = {
+  hidden: { y: -24, opacity: 0 },
+  visible: { y: 0, opacity: 1 },
+};
+
+const Header: React.FC<HeaderProps> = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const preferences = usePreferences();
+  const savedRecipeIds = useSavedRecipeIds();
+
+  const savedCount = savedRecipeIds.length;
+
+  const handlePreferencesShortcut = () => {
+    navigate("/profile#preferences");
+  };
+
+  const handleSavedShortcut = () => {
+    navigate("/profile#saved");
+  };
+
+  const handleClearLocalData = () => {
+    clearAllData();
+  };
+
+  const isActivePath = (path: string) => {
+    if (path === "/") return location.pathname === "/";
+    return location.pathname.startsWith(path);
+  };
 
   return (
     <motion.header
-      {...headerMotion}
-      transition={{ type: "spring", stiffness: 80, damping: 16 }}
-      className="w-full sticky top-0 z-40 border-b border-neutral-200/70 dark:border-neutral-800/80 bg-white/70 dark:bg-neutral-950/70 backdrop-blur-xl"
+      className="sticky top-0 z-40 w-full border-b border-neutral-200/70 bg-[rgba(250,248,244,0.92)] backdrop-blur-md dark:border-neutral-800 dark:bg-[rgba(20,17,14,0.9)]"
+      initial="hidden"
+      animate="visible"
+      variants={headerVariants}
+      transition={{ duration: 0.4, ease: "easeOut" }}
     >
-      <div className="w-full px-6 lg:px-12 py-4 flex items-center justify-between gap-4">
+      <div className="flex h-16 items-center justify-between gap-4 px-6 lg:px-12">
         {/* Left: Logo */}
-        <div className="flex items-center gap-3">
-          <Link to="/" className="group flex items-center gap-2" aria-label="AtelierAI Recipes Home">
-            <div className="h-9 w-9 rounded-full border border-neutral-300/70 dark:border-neutral-700/80 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center text-[10px] tracking-[0.2em] uppercase text-neutral-700 dark:text-neutral-200">
-              AI
-            </div>
-            <div className="flex flex-col -space-y-0.5">
-              <span className="text-lg leading-none font-semibold font-['Playfair_Display'] tracking-[0.22em] uppercase text-neutral-900 dark:text-neutral-50">
-                AtelierAI
-              </span>
-              <span className="text-[10px] tracking-[0.32em] uppercase text-neutral-500 dark:text-neutral-400">
-                Recipes Studio
-              </span>
-            </div>
-          </Link>
-        </div>
+        <NavLink
+          to="/"
+          className="flex items-center gap-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/90 text-amber-50 shadow-sm">
+            <span className="text-lg font-semibold">AI</span>
+          </div>
+          <div className="flex flex-col leading-tight">
+            <span className="font-['Playfair_Display'] text-base font-semibold tracking-tight text-neutral-900 dark:text-amber-50">
+              AI Recipe Generator
+            </span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+              Everyday magic in your kitchen
+            </span>
+          </div>
+        </NavLink>
 
-        {/* Center: Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-6">
-          {NAV_LINKS.map((item, index) => renderNavLink(item.label, item.path, index))}
+        {/* Center: Primary Nav (desktop) */}
+        <nav className="hidden items-center gap-6 md:flex">
+          {navItems.map((item) => {
+            const active = isActivePath(item.path);
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  [
+                    "relative text-sm font-medium tracking-wide transition-colors",
+                    "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-amber-100",
+                    (isActive || active) ? "text-neutral-900 dark:text-amber-50" : "",
+                  ].join(" ")
+                }
+              >
+                {({ isActive }) => (
+                  <span className="group inline-flex flex-col items-center gap-1">
+                    <span>{item.label}</span>
+                    <span
+                      className={`h-[2px] w-0 rounded-full bg-amber-500 transition-[width,background-color] duration-200 ease-out group-hover:w-6 ${
+                        isActive || active ? "w-6" : ""
+                      }`}
+                    />
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
-        {/* Right: Preferences & Mobile Menu */}
-        <div className="flex items-center gap-3">
-          {/* Mock Theme Dropdown */}
+        {/* Right: Profile menu + mobile overflow */}
+        <div className="flex items-center gap-2.5">
+          {/* Saved count indicator (desktop) */}
+          <div className="hidden items-center rounded-full border border-amber-200/70 bg-amber-50/80 px-3 py-1 text-xs font-medium text-amber-800 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50 md:inline-flex">
+            <Bookmark className="mr-1 h-3.5 w-3.5" />
+            <span className="whitespace-nowrap">Saved: {savedCount}</span>
+          </div>
+
+          {/* Profile dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-full border border-neutral-200/80 dark:border-neutral-800/90 bg-neutral-50/80 dark:bg-neutral-900/80 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors duration-150"
-                aria-label="Open appearance preferences"
+                className="relative h-9 w-9 rounded-full border border-neutral-200/80 bg-neutral-50/80 p-0 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-50/70 dark:border-neutral-700 dark:bg-neutral-900/60 dark:hover:border-amber-500/70 dark:hover:bg-neutral-900"
               >
-                <motion.span
-                  whileHover={{ rotate: 4, scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center justify-center"
-                >
-                  {isDark ? (
-                    <Moon className="h-4 w-4 text-neutral-800 dark:text-neutral-100" />
-                  ) : (
-                    <SunMedium className="h-4 w-4 text-neutral-800 dark:text-neutral-100" />
-                  )}
-                </motion.span>
+                <Avatar className="h-7 w-7">
+                  <AvatarImage alt={preferences.name} />
+                  <AvatarFallback
+                    className="text-xs font-semibold text-neutral-900 dark:text-amber-50"
+                    style={{ backgroundColor: preferences.avatarColor }}
+                  >
+                    {preferences.name
+                      .split(" ")
+                      .map((p) => p[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
+              sideOffset={8}
               align="end"
-              className="w-64 border-neutral-200/80 dark:border-neutral-800/80 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-md"
+              className="w-60 border border-neutral-200/70 bg-neutral-50/95 text-neutral-900 shadow-lg backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50"
             >
-              <div className="px-2 py-1.5">
-                <p className="text-[11px] tracking-[0.25em] uppercase text-neutral-500 dark:text-neutral-400 mb-1">
-                  Studio Preferences
-                </p>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Theme is simulated locally and stored only in this browser.
-                </p>
-              </div>
-              <Separator className="my-1 bg-neutral-200/70 dark:bg-neutral-800/80" />
-              <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
-                className="flex items-center justify-between py-2.5 cursor-default"
-              >
-                <div className="flex flex-col">
-                  <span className="text-xs font-medium text-neutral-800 dark:text-neutral-100">
-                    Dark Studio Mode
-                  </span>
-                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    Mock toggle for visual exploration.
+              <div className="flex items-center gap-3 px-3 pb-2 pt-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-neutral-900 dark:text-amber-50" style={{ backgroundColor: preferences.avatarColor }}>
+                  {preferences.name
+                    .split(" ")
+                    .map((p) => p[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </div>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-sm font-medium">{preferences.name}</span>
+                  <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+                    Mock profile (local only)
                   </span>
                 </div>
-                <Switch
-                  checked={isDark}
-                  onCheckedChange={toggle}
-                  aria-label="Toggle dark studio mode (mock)"
-                  className="ml-3"
-                />
+              </div>
+
+              <div className="px-3 pb-1 pt-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+                Kitchen shortcuts
+              </div>
+
+              <DropdownMenuItem
+                onSelect={handleSavedShortcut}
+                className="flex items-center gap-2.5 text-sm text-neutral-800 focus:bg-amber-50/80 dark:text-neutral-100 dark:focus:bg-neutral-800/80"
+              >
+                <Bookmark className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <div className="flex flex-1 items-center justify-between gap-2">
+                  <span>Saved recipes</span>
+                  <span className="rounded-full bg-amber-100 px-2 py-[2px] text-[10px] font-semibold tracking-wide text-amber-800 dark:bg-amber-500/25 dark:text-amber-200">
+                    {savedCount}
+                  </span>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onSelect={handlePreferencesShortcut}
+                className="flex items-center gap-2.5 text-sm text-neutral-800 focus:bg-amber-50/80 dark:text-neutral-100 dark:focus:bg-neutral-800/80"
+              >
+                <Settings2 className="h-4 w-4 text-neutral-600 dark:text-neutral-300" />
+                <span>Preferences</span>
+              </DropdownMenuItem>
+
+              <div className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+                Data
+              </div>
+
+              <DropdownMenuItem
+                onSelect={handleClearLocalData}
+                className="flex items-center gap-2.5 text-sm text-red-700 focus:bg-red-50/90 dark:text-red-300 dark:focus:bg-red-950/60"
+              >
+                <Trash2 className="h-4 w-4" />
+                <div className="flex flex-col">
+                  <span>Clear local data</span>
+                  <span className="text-[11px] text-red-500/80 dark:text-red-400/80">
+                    Resets all recipes, saves & preferences
+                  </span>
+                </div>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Mobile Navigation Sheet */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="md:hidden h-9 w-9 rounded-full border border-neutral-200/80 dark:border-neutral-800/90 bg-neutral-50/80 dark:bg-neutral-900/80 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors duration-150"
-                aria-label="Open navigation menu"
-              >
-                <Menu className="h-4 w-4 text-neutral-900 dark:text-neutral-100" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent
-              side="right"
-              className="w-[260px] border-l border-neutral-200/80 dark:border-neutral-800/80 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-xl px-5 py-6 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex flex-col -space-y-0.5">
-                    <span className="text-sm font-semibold font-['Playfair_Display'] tracking-[0.22em] uppercase text-neutral-900 dark:text-neutral-50">
-                      AtelierAI
-                    </span>
-                    <span className="text-[10px] tracking-[0.32em] uppercase text-neutral-500 dark:text-neutral-400">
-                      Recipes Studio
-                    </span>
-                  </div>
-                </div>
-                <nav className="flex flex-col gap-3">
-                  {NAV_LINKS.map((item) => (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      className={({ isActive }) =>
-                        [
-                          "text-sm uppercase tracking-[0.22em] py-1.5 border-b",
-                          "transition-colors duration-150",
-                          isActive
-                            ? "text-neutral-900 dark:text-neutral-50 border-neutral-900 dark:border-neutral-100"
-                            : "text-neutral-600 dark:text-neutral-300 border-neutral-200/80 dark:border-neutral-800/80",
-                        ].join(" ")
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
-                  ))}
-                </nav>
-              </div>
-
-              <div className="pt-4 border-t border-neutral-200/80 dark:border-neutral-800/80 flex flex-col gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                <p>All experiences are generated entirely in your browser using mock data.</p>
-                <p>Favorites and theme preferences persist locally via localStorage.</p>
-              </div>
-            </SheetContent>
-          </Sheet>
+          {/* Mobile menu indicator (placeholder for potential future expansion) */}
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/80 bg-neutral-50/90 text-neutral-700 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-neutral-200 dark:hover:border-amber-500/70 dark:hover:bg-neutral-900 md:hidden"
+            aria-label="Navigation shortcuts"
+          >
+            <Menu className="h-4.5 w-4.5" />
+          </button>
         </div>
       </div>
     </motion.header>

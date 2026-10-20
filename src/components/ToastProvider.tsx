@@ -2,49 +2,51 @@ import React from "react";
 import { Toaster } from "sonner";
 
 // ToastProvider
-// -------------
-// This component configures Sonner toasts for the entire AtelierAI Recipes app.
-// It does NOT create or manage any app state; it only defines presentation,
-// placement, and theming for notifications.
+// --------------
+// Global Sonner <Toaster /> wrapper used once in the root App layout.
+// This configures placement, color scheme, fonts, and motion to match
+// the warm, tactile lifestyle branding of the AI Recipe Generator app.
 //
-// Palette & Layout (editorial-inspired):
-// - Neutral porcelain background (#f5f1ea / #faf5ee)
-// - Deep ink foreground (#111827)
-// - Accents in warm beige / sepia (#d0b49f, #b48a64)
-// - Subtle borders & shadows for depth without heaviness.
-//
-// Usage: Wrap your application tree in <ToastProvider> in src/App.tsx.
-// Components can then call `toast()` from `sonner` directly.
+// NOTE: This app is 100% frontend-only and uses mocked state in src/mock.ts.
+// All toasts are purely client-side UX feedback with no real backend.
 
-export interface ToastProviderProps {
-  children: React.ReactNode;
-}
-
-export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
+const ToastProvider: React.FC = () => {
   return (
-    <>
-      {children}
-      <Toaster
-        position="top-right"
-        richColors={false}
-        closeButton
-        expand
-        theme="light"
-        toastOptions={{
-          className:
-            // Full-width friendly, editorial toast styling
-            "group pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-none border border-neutral-200 bg-[#f9f4ee]/95 px-4 py-3 text-sm shadow-[0_18px_45px_rgba(15,23,42,0.22)] backdrop-blur-sm " +
-            "dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50",
-          style: {
-            // Inline style fallbacks for environments without Tailwind processing
-            borderRadius: 0,
-            borderColor: "#e5e5e5",
-            backgroundColor: "rgba(249,244,238,0.95)",
-          },
-          duration: 3800,
-        }}
-      />
-    </>
+    <Toaster
+      position="top-right"
+      richColors
+      closeButton
+      expand={false}
+      toastOptions={{
+        duration: 3800,
+        classNames: {
+          toast:
+            // Base layout + warm surface + subtle border
+            "data-[type=success]:bg-emerald-600/95 data-[type=success]:text-emerald-50 " +
+            "data-[type=error]:bg-rose-600/95 data-[type=error]:text-rose-50 " +
+            "data-[type=warning]:bg-amber-600/95 data-[type=warning]:text-amber-50 " +
+            "data-[type=info]:bg-teal-700/95 data-[type=info]:text-teal-50 " +
+            "backdrop-blur-md shadow-lg border border-white/10 rounded-xl " +
+            // Spacing & typography aligned with Inter
+            "px-4 py-3 text-sm font-normal font-['Inter'] tracking-tight " +
+            // Motion & interaction
+            "transition-colors transition-opacity duration-200 ease-out",
+          title:
+            "font-['Inter'] font-medium text-[0.95rem] leading-snug text-white", // high-contrast title
+          description:
+            "mt-1 font-['Inter'] text-[0.82rem] leading-relaxed text-white/90", // softer supporting copy
+          icon:
+            "mr-2 w-5 h-5 shrink-0 text-white/90 flex items-center justify-center",
+          actionButton:
+            "ml-2 rounded-full bg-white/90 px-3 py-1 text-xs font-['Inter'] font-semibold " +
+            "text-neutral-900 hover:bg-white focus-visible:outline-none focus-visible:ring-2 " +
+            "focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900 focus-visible:ring-white/70",
+          closeButton:
+            "ml-1 text-white/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 " +
+            "focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-900 focus-visible:ring-white/70",
+        },
+      }}
+    />
   );
 };
 
