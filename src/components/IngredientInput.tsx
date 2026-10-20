@@ -1,288 +1,313 @@
-import React, { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { toast } from 'sonner';
-import { BookOpen, Check, X, Sparkles } from 'lucide-react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { cn } from '@/lib/utils';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { X, Plus, Search } from "lucide-react";
 
-type IngredientInputProps = {
-  onRecipeGenerated?: (id: string) => void;
-};
+import {
+  Button,
+  Input,
+  Badge,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/shadcn";
 
-const DIETARY_OPTIONS = [
-  { label: 'None', value: '' },
-  { label: 'Vegetarian', value: 'vegetarian' },
-  { label: 'Vegan', value: 'vegan' },
-  { label: 'Gluten-Free', value: 'gluten-free' },
-  { label: 'Keto', value: 'keto' },
-  { label: 'Pescatarian', value: 'pescatarian' },
-];
+import { ingredients, searchIngredients } from "@/mock";
 
-const MEAL_TYPES = [
-  { label: 'Any', value: '' },
-  { label: 'Breakfast', value: 'breakfast' },
-  { label: 'Lunch', value: 'lunch' },
-  { label: 'Dinner', value: 'dinner' },
-  { label: 'Snack', value: 'snack' },
-  { label: 'Dessert', value: 'dessert' },
-];
+// This is a purely client-side, mock-based ingredient input.
+// It does NOT talk to any backend or real AI.
 
-function validateIngredients(input: string): string | null {
-  if (!input.trim()) return 'Please enter at least one ingredient.';
-  if (input.length > 300) return 'Ingredient list is too long (max 300 characters).';
-  const items = input.split(/,|\n/).map(i => i.trim()).filter(Boolean);
-  if (items.length === 0) return 'Please enter at least one valid ingredient.';
-  if (items.length > 20) return 'Too many ingredients (max 20).';
-  if (items.some(i => i.length > 40)) return 'Each ingredient must be under 40 characters.';
-  return null;
+export interface IngredientInputProps {
+  value: string[];
+  onChange: (next: string[]) => void;
+  label?: string;
+  placeholder?: string;
+  helperText?: string;
 }
 
-function generateRecipeId(ingredients: string, dietary: string, meal: string): string {
-  const base = [ingredients, dietary, meal, Date.now(), Math.random()].join('|');
-  return btoa(unescape(encodeURIComponent(base))).replace(/[^a-zA-Z0-9]/g, '').slice(0, 10);
+function normalizeIngredientName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function IngredientInput({ onRecipeGenerated }: IngredientInputProps) {
-  const [ingredients, setIngredients] = useState('');
-  const [dietary, setDietary] = useState('');
-  const [mealType, setMealType] = useState('');
-  const [servings, setServings] = useState(2);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showHelp, setShowHelp] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+export const IngredientInput: React.FC<IngredientInputProps> = ({
+  value,
+  onChange,
+  label = "Ingredients",
+  placeholder = "Type to search or add an ingredient (press Enter)",
+  helperText = "We remix from this list only in your browser—nothing is sent to a server.",
+}) => {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setIngredients(e.target.value);
-    setError(null);
-  }
+  const normalizedSelected = useMemo(
+    () => new Set(value.map((v) => normalizeIngredientName(v))),
+    [value],
+  );
 
-  function handleDietaryChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    setDietary(e.target.value);
-  }
+  const suggestions = useMemo(() => {
+    const base = searchIngredients(query || "");
+    return base.filter((ing) => !normalizedSelected.has(normalizeIngredientName(ing.name)));
+  }, [query, normalizedSelected]);
 
-  function handleMealTypeChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    setMealType(e.target.value);
-  }
+  const allIngredientNames = useMemo(
+    () => ingredients.map((i) => i.name).sort((a, b) => a.localeCompare(b)),
+    [],
+  );
 
-  function handleServingsChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const val = parseInt(e.target.value, 10);
-    if (!isNaN(val) && val >= 1 && val <= 12) setServings(val);
-  }
-
-  function handleBlur() {
-    const err = validateIngredients(ingredients);
-    setError(err);
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const err = validateIngredients(ingredients);
-    if (err) {
-      setError(err);
-      toast(err, { icon: <X className="w-5 h-5 text-rose-500" /> });
-      inputRef.current?.focus();
+  const addIngredient = (name: string) => {
+    const normalized = normalizeIngredientName(name);
+    if (!normalized) return;
+    if (normalizedSelected.has(normalized)) {
+      setQuery("");
       return;
     }
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      const id = generateRecipeId(ingredients, dietary, mealType);
-      toast('Recipe generated!', { icon: <Check className="w-5 h-5 text-emerald-500" /> });
-      setIngredients('');
-      setError(null);
-      if (onRecipeGenerated) onRecipeGenerated(id);
-    }, 1200);
-  }
+    const pretty = name
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .map((w, idx) => (idx === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w.toLowerCase()))
+      .join(" ");
 
-  function handlePasteExample() {
-    setIngredients('Eggs, Spinach, Feta, Cherry Tomatoes, Olive Oil, Salt, Pepper');
-    setError(null);
-    inputRef.current?.focus();
-    toast('Example ingredients pasted', { icon: <BookOpen className="w-5 h-5 text-emerald-500" /> });
-  }
+    onChange([...value, pretty]);
+    setQuery("");
+  };
+
+  const removeIngredient = (name: string) => {
+    const normalized = normalizeIngredientName(name);
+    const next = value.filter((v) => normalizeIngredientName(v) !== normalized);
+    onChange(next);
+  };
+
+  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (event) => {
+    if (event.key === "Enter" && query.trim()) {
+      event.preventDefault();
+      addIngredient(query);
+    }
+    if (event.key === "Backspace" && !query && value.length) {
+      // quick remove last
+      removeIngredient(value[value.length - 1]);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (!inputRef.current) return;
+      if (!inputRef.current.parentElement?.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [isOpen]);
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full flex flex-col gap-5"
-      autoComplete="off"
-      spellCheck={false}
-      aria-label="Ingredient input form"
-    >
-      <div className="w-full flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <label htmlFor="ingredients" className="block text-base font-semibold text-slate-900 dark:text-white tracking-tight">
-            Ingredients
-          </label>
-          <button
-            type="button"
-            tabIndex={0}
-            onClick={() => setShowHelp(true)}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-all duration-200 focus:outline-none"
-            aria-label="How to use"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> How to use?
-          </button>
-        </div>
-        <motion.textarea
-          id="ingredients"
-          ref={inputRef}
-          rows={4}
-          maxLength={300}
-          value={ingredients}
-          onChange={handleInputChange}
-          onBlur={handleBlur}
-          placeholder="e.g. Chicken breast, Lemon, Garlic, Olive oil, Salt, Pepper"
-          className={cn(
-            "w-full px-4 py-3 rounded-xl border bg-slate-50 dark:bg-zinc-800 text-base text-slate-900 dark:text-white font-medium transition-all duration-300 resize-none shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:focus:ring-emerald-500",
-            error ? "border-rose-400 dark:border-rose-500" : "border-slate-200 dark:border-white/10"
-          )}
-          disabled={loading}
-          aria-invalid={!!error}
-          aria-describedby={error ? "ingredients-error" : undefined}
-          initial={false}
-          animate={error ? { scale: 1.02 } : { scale: 1 }}
-        />
-        <div className="flex items-center justify-between mt-1">
-          <button
-            type="button"
-            tabIndex={0}
-            onClick={handlePasteExample}
-            className="text-xs text-emerald-600 dark:text-emerald-400 font-medium hover:underline focus:outline-none"
-          >
-            Paste example
-          </button>
-          <span className={cn(
-            "text-xs",
-            ingredients.length > 280 ? "text-rose-500" : "text-slate-400 dark:text-slate-500"
-          )}>
-            {ingredients.length}/300
+    <div className="w-full space-y-2">
+      <div className="flex items-center justify-between gap-4">
+        <label className="text-sm tracking-[0.15em] uppercase text-neutral-500 dark:text-neutral-400 font-semibold">
+          {label}
+        </label>
+        {value.length > 0 && (
+          <span className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">
+            {value.length.toString().padStart(2, "0")} selected
           </span>
-        </div>
-        {error && (
-          <motion.div
-            id="ingredients-error"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-rose-500 text-sm mt-1 flex items-center gap-1"
-          >
-            <X className="w-4 h-4" /> {error}
-          </motion.div>
         )}
       </div>
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 flex flex-col gap-1">
-          <label htmlFor="dietary" className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Dietary</label>
-          <select
-            id="dietary"
-            value={dietary}
-            onChange={handleDietaryChange}
-            className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-base transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:focus:ring-emerald-500"
-            disabled={loading}
-          >
-            {DIETARY_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1 flex flex-col gap-1">
-          <label htmlFor="meal-type" className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Meal Type</label>
-          <select
-            id="meal-type"
-            value={mealType}
-            onChange={handleMealTypeChange}
-            className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-base transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:focus:ring-emerald-500"
-            disabled={loading}
-          >
-            {MEAL_TYPES.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1 flex flex-col gap-1">
-          <label htmlFor="servings" className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Servings</label>
+
+      <div className="relative w-full rounded-xl border border-neutral-200/80 bg-white/80 dark:bg-neutral-950/80 dark:border-neutral-800/80 shadow-sm focus-within:border-neutral-900 focus-within:ring-1 focus-within:ring-neutral-900/80 transition-[border,box-shadow] duration-150 ease-out">
+        <div className="flex items-center gap-3 px-3 pt-2 pb-1">
+          <Search className="h-4 w-4 text-neutral-400" aria-hidden="true" />
           <input
-            id="servings"
-            type="number"
-            min={1}
-            max={12}
-            value={servings}
-            onChange={handleServingsChange}
-            className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-base transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:focus:ring-emerald-500"
-            disabled={loading}
+            ref={inputRef}
+            className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-400 font-['Playfair_Display']"
+            placeholder={placeholder}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setIsOpen(true);
+            }}
+            onFocus={() => setIsOpen(true)}
+            onKeyDown={handleKeyDown}
+            aria-label={label}
           />
-        </div>
-      </div>
-      <motion.button
-        type="submit"
-        disabled={loading}
-        whileTap={{ scale: 0.97 }}
-        className={cn(
-          "w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-lg transition-all duration-300 border shadow-sm",
-          "bg-gradient-to-b from-slate-900 to-black hover:from-slate-800 hover:to-slate-950 text-white border-slate-900 dark:border-white/10",
-          "hover:-translate-y-0.5 hover:shadow-md active:translate-y-0",
-          loading && "opacity-60 pointer-events-none"
-        )}
-        aria-busy={loading}
-      >
-        {loading ? (
-          <span className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 animate-spin" /> Generating...
-          </span>
-        ) : (
-          <>
-            <BookOpen className="w-5 h-5" /> Generate Recipe
-          </>
-        )}
-      </motion.button>
-      <Dialog.Root open={showHelp} onOpenChange={setShowHelp}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/40 z-50 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-zinc-900 rounded-2xl border border-slate-100 dark:border-white/10 shadow-2xl max-w-md w-full p-7 focus:outline-none">
-            <Dialog.Title className="text-lg font-bold font-serif tracking-tight text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-emerald-500" /> How to Use
-            </Dialog.Title>
-            <div className="text-slate-600 dark:text-slate-400 text-base mb-4">
-              <ul className="list-disc pl-5 space-y-2">
-                <li>Enter your available ingredients, separated by commas or new lines.</li>
-                <li>Optionally select dietary preferences, meal type, and servings.</li>
-                <li>Click <span className="font-semibold text-emerald-600 dark:text-emerald-400">Generate Recipe</span> to get a custom AI recipe.</li>
-                <li>Save your favorites and manage them anytime.</li>
-              </ul>
-            </div>
-            <div className="bg-slate-50 dark:bg-zinc-800 rounded-xl p-4 mb-4 border border-slate-100 dark:border-white/10">
-              <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Example:</div>
-              <div className="font-mono text-sm text-slate-900 dark:text-white">
-                Eggs, Spinach, Feta, Cherry Tomatoes, Olive Oil, Salt, Pepper
-              </div>
-            </div>
+          {query && (
             <button
               type="button"
-              onClick={() => {
-                setShowHelp(false);
-                handlePasteExample();
-              }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-b from-slate-900 to-black hover:from-slate-800 hover:to-slate-950 text-white font-medium transition-all duration-300 border border-slate-900 dark:border-white/10 shadow-sm hover:-translate-y-0.5"
+              className="rounded-full p-1 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              onClick={() => setQuery("")}
+              aria-label="Clear ingredient search"
             >
-              <BookOpen className="w-4 h-4" /> Paste Example
+              <X className="h-3 w-3" />
             </button>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="absolute top-3 right-3 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
-                aria-label="Close"
+          )}
+          {query.trim() && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="ml-1 h-7 border-neutral-300 bg-white/80 text-[11px] font-medium tracking-[0.16em] uppercase rounded-full px-3 hover:bg-neutral-900 hover:text-neutral-50 dark:bg-neutral-900 dark:text-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-50 dark:hover:text-neutral-900"
+              onClick={() => addIngredient(query)}
+            >
+              <Plus className="mr-1 h-3 w-3" /> add
+            </Button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2 px-3 pb-2">
+          <AnimatePresence initial={false}>
+            {value.map((item) => (
+              <motion.span
+                key={normalizeIngredientName(item)}
+                layout
+                initial={{ opacity: 0, scale: 0.9, y: 4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                transition={{ type: "spring", stiffness: 320, damping: 25, mass: 0.6 }}
               >
-                <svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-                  <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
-                </svg>
-              </button>
-            </Dialog.Close>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </form>
+                <Badge
+                  variant="outline"
+                  className="group flex items-center gap-1 rounded-full border-neutral-300 bg-neutral-50/70 px-3 py-1 text-[11px] tracking-[0.16em] uppercase text-neutral-700 dark:bg-neutral-900/80 dark:border-neutral-700 dark:text-neutral-100"
+                >
+                  <span className="font-medium">{item}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeIngredient(item)}
+                    className="ml-1 rounded-full p-0.5 text-neutral-400 hover:text-neutral-900 hover:bg-neutral-200/80 dark:hover:bg-neutral-700/80 transition-colors"
+                    aria-label={`Remove ${item}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              </motion.span>
+            ))}
+          </AnimatePresence>
+        </div>
+
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -2 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.14, ease: "easeOut" }}
+              className="absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border border-neutral-200/90 bg-white/95 backdrop-blur-sm shadow-xl shadow-black/5 dark:border-neutral-800/90 dark:bg-neutral-950/95"
+              role="listbox"
+              aria-label="Ingredient suggestions"
+            >
+              <div className="py-1">
+                {suggestions.length === 0 && query.trim() && (
+                  <div className="flex items-center justify-between px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400">
+                    <span>
+                      "{query}" is not in our pantry. Add it as a custom ingredient.
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-[11px] tracking-[0.16em] uppercase text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800/80"
+                      onClick={() => addIngredient(query)}
+                    >
+                      <Plus className="mr-1 h-3 w-3" /> Add
+                    </Button>
+                  </div>
+                )}
+
+                {suggestions.length > 0 && (
+                  <>
+                    <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400">
+                      Atelier pantry matches
+                    </div>
+                    <ul className="px-1 pb-2">
+                      {suggestions.map((ing) => (
+                        <li key={ing.id}>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs text-neutral-800 hover:bg-neutral-100/90 dark:text-neutral-100 dark:hover:bg-neutral-800/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-neutral-900/70"
+                            onClick={() => {
+                              addIngredient(ing.name);
+                            }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium font-['Playfair_Display']">
+                                {ing.name}
+                              </span>
+                              <span className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400">
+                                {ing.category.replace("_", " ")}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {ing.flavorProfile.slice(0, 3).map((note) => (
+                                <span
+                                  key={note}
+                                  className="rounded-full bg-neutral-900 text-[9px] uppercase tracking-[0.18em] px-2 py-0.5 text-neutral-50 dark:bg-neutral-100 dark:text-neutral-900"
+                                >
+                                  {note}
+                                </span>
+                              ))}
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                <div className="border-t border-dashed border-neutral-200/80 px-3 pt-2 pb-2 text-[10px] text-neutral-500 dark:border-neutral-800/80 dark:text-neutral-400">
+                  <p className="mb-1">
+                    Or browse our pantry:
+                  </p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 rounded-full border-neutral-300 bg-neutral-50/80 px-3 text-[11px] tracking-[0.16em] uppercase text-neutral-800 hover:bg-neutral-900 hover:text-neutral-50 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-100 dark:hover:bg-neutral-50 dark:hover:text-neutral-900"
+                      >
+                        Open pantry
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="max-h-72 w-64 overflow-y-auto border-neutral-200/90 bg-white/95 backdrop-blur-sm dark:border-neutral-800/90 dark:bg-neutral-950/95">
+                      {allIngredientNames.map((name) => {
+                        const isSelected = normalizedSelected.has(normalizeIngredientName(name));
+                        return (
+                          <DropdownMenuItem
+                            key={name}
+                            onClick={() => {
+                              if (isSelected) {
+                                removeIngredient(name);
+                              } else {
+                                addIngredient(name);
+                              }
+                            }}
+                            className="flex items-center justify-between text-xs text-neutral-800 dark:text-neutral-100"
+                          >
+                            <span className="font-['Playfair_Display']">{name}</span>
+                            {isSelected && (
+                              <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[9px] uppercase tracking-[0.18em] text-neutral-50 dark:bg-neutral-100 dark:text-neutral-900">
+                                selected
+                              </span>
+                            )}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {helperText && (
+        <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+          {helperText}
+        </p>
+      )}
+    </div>
   );
-}
+};
 
 export default IngredientInput;
