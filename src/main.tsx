@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { TooltipProvider } from './components/ui/shadcn/tooltip';
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -31,7 +32,9 @@ class ErrorBoundary extends React.Component<
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <TooltipProvider delayDuration={200}>
+        <App />
+      </TooltipProvider>
     </ErrorBoundary>
   </React.StrictMode>
 );

@@ -17,23 +17,29 @@ export const APP_ROUTES: RouteItem[] = [
   },
   {
     "path": "/search",
-    "name": "RecipeSearchPage",
-    "filePath": "src/pages/RecipeSearchPage.tsx",
+    "name": "SearchPage",
+    "filePath": "src/pages/SearchPage.tsx",
     "navLabel": "Search",
     "showInNav": true
   },
   {
     "path": "/recipe/:id",
-    "name": "RecipeDetailPage",
-    "filePath": "src/pages/RecipeDetailPage.tsx",
+    "name": "RecipePage",
+    "filePath": "src/pages/RecipePage.tsx",
     "showInNav": false
   },
   {
-    "path": "/profile",
-    "name": "ProfilePage",
-    "filePath": "src/pages/ProfilePage.tsx",
-    "navLabel": "Profile",
+    "path": "/favorites",
+    "name": "FavoritesPage",
+    "filePath": "src/pages/FavoritesPage.tsx",
+    "navLabel": "Favorites",
     "showInNav": true
+  },
+  {
+    "path": "*",
+    "name": "NotFoundPage",
+    "filePath": "src/pages/NotFoundPage.tsx",
+    "showInNav": false
   }
 ];
 
@@ -47,7 +53,7 @@ export const NAV_LINKS: Array<{ path: string; label: string }> = [
     "label": "Search"
   },
   {
-    "path": "/profile",
-    "label": "Profile"
+    "path": "/favorites",
+    "label": "Favorites"
   }
 ];

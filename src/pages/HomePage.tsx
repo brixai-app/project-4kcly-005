@@ -1,395 +1,374 @@
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-
-import { useFeaturedRecipes } from "@/mock";
-import AIRecipeGenerator from "@/components/AIRecipeGenerator";
+import React, { useCallback, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Sparkles, Loader2 } from "lucide-react";
+import { useAllRecipes, useApp, Recipe } from "@/mock";
 import RecipeCard from "@/components/RecipeCard";
-import LoadingSkeleton from "@/components/LoadingSkeleton";
-import { Button, Card, CardContent } from "@/components/ui/shadcn";
+import RecipeDetail from "@/components/RecipeDetail";
+import {
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  Input,
+} from "@/components/ui/shadcn";
+import { showErrorToast, showSuccessToast } from "@/components/Toast";
+import SearchBar from "@/components/SearchBar";
 
-// HomePage is fully driven by the mocked client-side store in src/mock.ts.
-// There is NO real backend or AI – everything is generated and persisted in-browser.
+// NOTE: All data and "AI" behavior are 100% frontend mocks wired to src/mock.ts.
+// There is NO real backend or network request; generation is simulated client-side.
 
-const carouselVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? 80 : -80,
-    opacity: 0,
-  }),
-  center: {
-    x: 0,
+const HERO_BG_BASE64 =
+  "data:image/svg+xml;base64," +
+  btoa(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='900'>
+      <defs>
+        <linearGradient id='g' x1='0' x2='1' y1='0' y2='1'>
+          <stop offset='0' stop-color='#f9f5f0'/>
+          <stop offset='0.5' stop-color='#f3e0cf'/>
+          <stop offset='1' stop-color='#e9c2a8'/>
+        </linearGradient>
+        <pattern id='grain' patternUnits='userSpaceOnUse' width='60' height='60'>
+          <circle cx='8' cy='10' r='1.2' fill='#e2b79c' opacity='0.5'/>
+          <circle cx='30' cy='28' r='1.3' fill='#d59a78' opacity='0.5'/>
+          <circle cx='50' cy='12' r='1.1' fill='#c58463' opacity='0.45'/>
+          <circle cx='22' cy='50' r='1.4' fill='#e6bfa4' opacity='0.45'/>
+        </pattern>
+        <clipPath id='tableCurve'>
+          <path d='M0,150 C260,220 460,180 800,210 C1160,245 1360,210 1600,170 L1600,900 L0,900 Z'/>
+        </clipPath>
+      </defs>
+      <rect width='1600' height='900' fill='url(#g)'/>
+      <g clip-path='url(#tableCurve)'>
+        <rect y='140' width='1600' height='760' fill='#f3e0cf'/>
+        <rect y='140' width='1600' height='760' fill='url(#grain)' opacity='0.7'/>
+      </g>
+      <g opacity='0.38'>
+        <circle cx='260' cy='360' r='150' fill='#f7d4b4'/>
+        <circle cx='270' cy='340' r='128' fill='#f2c199'/>
+        <ellipse cx='270' cy='385' rx='165' ry='22' fill='#d9a37e'/>
+        <circle cx='270' cy='315' r='18' fill='#fdf6ef'/>
+        <circle cx='245' cy='365' r='16' fill='#fdf6ef'/>
+        <circle cx='302' cy='370' r='16' fill='#fdf6ef'/>
+        <circle cx='272' cy='340' r='6' fill='#d98657'/>
+        <circle cx='252' cy='365' r='5' fill='#d98657'/>
+        <circle cx='302' cy='368' r='5' fill='#d98657'/>
+      </g>
+      <g opacity='0.45'>
+        <ellipse cx='1120' cy='390' rx='190' ry='110' fill='#f6d9bb'/>
+        <ellipse cx='1120' cy='395' rx='135' ry='78' fill='#f2c39c'/>
+        <ellipse cx='1120' cy='430' rx='180' ry='25' fill='#d89f76'/>
+        <path d='M1010,350 C1035,320 1065,308 1095,305 C1130,302 1170,310 1195,328 C1215,343 1228,365 1228,390 C1205,410 1169,423 1120,423 C1070,423 1030,410 1002,392 C1002,376 1004,362 1010,350 Z' fill='#fdf5ee'/>
+        <path d='M1045,350 C1063,343 1083,340 1098,340 C1125,340 1150,346 1171,356 C1180,366 1187,376 1190,386 C1170,397 1147,404 1120,404 C1094,404 1071,398 1051,389 C1048,376 1046,363 1045,350 Z' fill='#f5d0ae'/>
+      </g>
+    </svg>`
+  );
+
+const heroVariants = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0 },
+};
+
+const gridItemVariants = {
+  hidden: { opacity: 0, y: 24 },
+  visible: (i: number) => ({
     opacity: 1,
-    transition: { duration: 0.45, ease: [0.22, 0.61, 0.36, 1] },
-  },
-  exit: (direction: number) => ({
-    x: direction > 0 ? -80 : 80,
-    opacity: 0,
-    transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] },
+    y: 0,
+    transition: { delay: 0.05 * i, duration: 0.25, ease: "easeOut" },
   }),
 };
 
 const HomePage: React.FC = () => {
-  const navigate = useNavigate();
-  const featured = useFeaturedRecipes();
+  const { generateRecipe, toggleFavorite, isFavorite } = useApp();
+  const allRecipes = useAllRecipes();
 
-  const [index, setIndex] = React.useState(0);
-  const [direction, setDirection] = React.useState(0);
+  const [input, setInput] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generated, setGenerated] = useState<Recipe | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const hasFeatured = featured && featured.length > 0;
+  const handleGenerate = useCallback(
+    async (query?: string) => {
+      const q = (query ?? input).trim();
+      if (!q) {
+        showErrorToast("Add a few ingredients first", "Try something like ‘tomato basil pasta’.");
+        return;
+      }
+      try {
+        setIsGenerating(true);
+        const recipe = await generateRecipe(q);
+        setGenerated(recipe);
+        setDialogOpen(true);
+        showSuccessToast("Recipe created", "Your AI-crafted dish is ready to explore.");
+      } catch (error) {
+        console.error(error);
+        showErrorToast("Couldn’t generate recipe", "This is a frontend-only mock — please try again.");
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [generateRecipe, input],
+  );
 
-  const safeIndex = hasFeatured
-    ? ((index % featured.length) + featured.length) % featured.length
-    : 0;
+  const heroFeatured = useMemo(() => allRecipes.slice(0, 4), [allRecipes]);
+  const moreFeatured = useMemo(() => allRecipes.slice(4, 12), [allRecipes]);
 
-  const goTo = (next: number) => {
-    if (!hasFeatured) return;
-    setDirection(next > index ? 1 : -1);
-    setIndex(((next % featured.length) + featured.length) % featured.length);
-  };
-
-  const goNext = () => {
-    if (!hasFeatured) return;
-    setDirection(1);
-    setIndex((prev) => (prev + 1) % featured.length);
-  };
-
-  const goPrev = () => {
-    if (!hasFeatured) return;
-    setDirection(-1);
-    setIndex((prev) => (prev - 1 + featured.length) % featured.length);
-  };
-
-  const currentRecipe = hasFeatured ? featured[safeIndex] : undefined;
+  const onSaveFavoriteFromDialog = useCallback(() => {
+    if (!generated) return;
+    toggleFavorite(generated.id);
+    const nowFav = isFavorite(generated.id);
+    if (!nowFav) {
+      showSuccessToast("Added to favorites", "Find it anytime in your Favorites.");
+    } else {
+      showInfoToast("Removed from favorites", "You can always regenerate something new.");
+    }
+  }, [generated, isFavorite, toggleFavorite]);
 
   return (
-    <div className="w-full min-h-screen bg-[#f8f1ea] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-50 flex flex-col">
-      {/* HERO SECTION */}
-      <section className="relative w-full min-h-[70vh] overflow-hidden">
-        {/* Background image */}
-        <div className="absolute inset-0">
-          <div
-            className="w-full h-full bg-[url('https://images.pexels.com/photos/3731474/pexels-photo-3731474.jpeg?auto=compress&cs=tinysrgb&w=1600')] bg-cover bg-center"
-            aria-hidden="true"
-          />
-          {/* Warm organic overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[rgba(248,241,234,0.92)] via-[rgba(244,162,97,0.38)] to-[rgba(36,24,18,0.92)] mix-blend-multiply" />
-          <div className="absolute -bottom-32 left-1/2 -translate-x-1/2 w-[140%] h-72 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.5),_transparent_60%)] opacity-70" />
-        </div>
+    <div className="w-full min-h-screen bg-[#f9f5f0] text-[#3e2c23]">
+      {/* Hero Section */}
+      <section className="relative w-full min-h-[72vh] overflow-hidden bg-[#f9f5f0]">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-90 mix-blend-normal"
+          aria-hidden="true"
+          style={{
+            backgroundImage: `url(${HERO_BG_BASE64})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#f9f5f0] via-[#f9f5f0]/92 to-[#f9f5f0]/40" />
 
-        {/* Hero content */}
-        <div className="relative z-10 w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-16 lg:py-24 flex flex-col gap-12 lg:gap-16">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-            {/* Copy column */}
-            <div className="lg:col-span-6 min-w-0 flex flex-col gap-6">
-              <motion.div
-                initial={{ y: 30, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.7, ease: [0.22, 0.61, 0.36, 1] }}
-                className="inline-flex items-center gap-3 rounded-full bg-[rgba(255,255,255,0.85)] dark:bg-[rgba(15,10,8,0.95)] border border-[rgba(0,0,0,0.05)] dark:border-[rgba(255,255,255,0.08)] px-4 py-2 shadow-sm backdrop-blur-md w-fit"
-              >
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#E76F51] text-white text-xs font-semibold shadow-md">
-                  AI
-                </span>
-                <p className="text-xs sm:text-sm font-medium tracking-wide text-neutral-800 dark:text-neutral-100">
-                  100% frontend mock · Your private test kitchen in the browser
+        <div className="relative z-10 w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-16 lg:py-24 flex flex-col gap-12">
+          <motion.div
+            variants={heroVariants}
+            initial="hidden"
+            animate="visible"
+            transition={{ duration: 0.45, ease: "easeOut" }}
+            className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center"
+          >
+            {/* Left: Copy + generator */}
+            <div className="lg:col-span-7 min-w-0 flex flex-col gap-8">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 border border-[#e3d4c3] px-3 py-1 text-xs font-medium tracking-wide text-[#8b5e3c] shadow-sm backdrop-blur-sm w-max">
+                <Sparkles className="w-3.5 h-3.5 text-[#d94f4f]" aria-hidden="true" />
+                <span>100% client-side · Mock AI recipe studio</span>
+              </div>
+
+              <div className="space-y-4">
+                <h1 className="text-4xl sm:text-5xl lg:text-[3.25rem] leading-tight font-['Playfair_Display'] font-semibold tracking-tight whitespace-normal break-words">
+                  Discover Your Next Favorite Recipe
+                </h1>
+                <p className="max-w-2xl text-base sm:text-lg text-[#6b4a33] leading-relaxed">
+                  Whisper a few ingredients, a mood, or a craving. TactileChef’s mock AI layers them
+                  into richly textured recipes — all generated instantly in your browser with no
+                  real backend.
                 </p>
-              </motion.div>
+              </div>
 
-              <motion.h1
-                initial={{ y: 28, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: 0.05 }}
-                className="font-['Playfair_Display'] text-4xl sm:text-5xl lg:text-6xl xl:text-[3.7rem] leading-tight text-neutral-900 dark:text-amber-50 whitespace-normal break-words"
-              >
-                Cook the way you
-                <span className="block text-[#E76F51] dark:text-[#F4A261] mt-1">
-                  actually eat on weeknights.
-                </span>
-              </motion.h1>
-
-              <motion.p
-                initial={{ y: 24, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.8, ease: [0.19, 1, 0.22, 1], delay: 0.12 }}
-                className="text-sm sm:text-base lg:text-lg text-neutral-800/90 dark:text-neutral-100/90 max-w-xl"
-              >
-                Describe what&apos;s in your fridge, choose a vibe, and let the in-browser
-                AI mock generator dream up flexible recipes – no account, no backend,
-                no data leaving your device.
-              </motion.p>
-
-              <motion.div
-                initial={{ y: 26, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1], delay: 0.18 }}
-                className="flex flex-wrap items-center gap-3 sm:gap-4 mt-2"
-              >
-                <Button
-                  size="lg"
-                  className="bg-[#E76F51] hover:bg-[#e45d3c] text-white shadow-md shadow-[rgba(228,93,60,0.35)]"
-                  onClick={() => {
-                    const el = document.getElementById("ai-generator");
-                    if (el) {
-                      el.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }
-                  }}
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate a recipe
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="bg-white/80 dark:bg-neutral-900/70 border-neutral-200/70 dark:border-neutral-700/80 hover:bg-white dark:hover:bg-neutral-900"
-                  onClick={() => navigate("/recipes")}
-                >
-                  Browse all recipes
-                </Button>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.35, duration: 0.6 }}
-                className="mt-4 flex flex-wrap items-center gap-4 text-xs sm:text-sm text-neutral-800/80 dark:text-neutral-200/80"
-              >
-                <div className="flex -space-x-2">
-                  <div className="h-8 w-8 rounded-full border-2 border-[#f8f1ea] dark:border-neutral-950 bg-[url('https://images.pexels.com/photos/3760851/pexels-photo-3760851.jpeg?auto=compress&cs=tinysrgb&w=1600')] bg-cover bg-center" />
-                  <div className="h-8 w-8 rounded-full border-2 border-[#f8f1ea] dark:border-neutral-950 bg-[url('https://images.pexels.com/photos/1181680/pexels-photo-1181680.jpeg?auto=compress&cs=tinysrgb&w=1600')] bg-cover bg-center" />
-                  <div className="h-8 w-8 rounded-full border-2 border-[#f8f1ea] dark:border-neutral-950 bg-[url('https://images.pexels.com/photos/2837009/pexels-photo-2837009.jpeg?auto=compress&cs=tinysrgb&w=1600')] bg-cover bg-center" />
-                </div>
-                <p>
-                  Mocked for local dev: featured recipes, ratings, and reviews are all
-                  generated and stored in your browser.
-                </p>
-              </motion.div>
-            </div>
-
-            {/* Carousel column */}
-            <div className="lg:col-span-6 min-h-[260px] sm:min-h-[320px]">
-              <Card className="relative overflow-hidden border-none bg-[rgba(255,255,255,0.9)] dark:bg-[rgba(12,10,8,0.95)] shadow-xl shadow-[rgba(15,10,8,0.45)]/70 backdrop-blur-xl">
-                <CardContent className="p-0">
-                  <div className="relative h-full min-h-[260px] sm:min-h-[320px]">
-                    {!hasFeatured && (
-                      <div className="flex h-full items-center justify-center p-10">
-                        <LoadingSkeleton />
-                      </div>
-                    )}
-
-                    {hasFeatured && currentRecipe && (
-                      <AnimatePresence initial={false} custom={direction}>
-                        <motion.div
-                          key={currentRecipe.id}
-                          custom={direction}
-                          variants={carouselVariants}
-                          initial="enter"
-                          animate="center"
-                          exit="exit"
-                          className="absolute inset-0 flex flex-col lg:flex-row"
-                        >
-                          {/* Image side */}
-                          <div className="relative w-full lg:w-1/2 h-48 sm:h-56 lg:h-auto overflow-hidden">
-                            <div
-                              className="absolute inset-0 bg-cover bg-center"
-                              style={{
-                                backgroundImage: `url(${currentRecipe.heroImageUrl})`,
-                              }}
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/5 to-transparent" />
-                            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-white/90">
-                              <div className="inline-flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-sm">
-                                <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-                                Live mock data
-                              </div>
-                              <div className="flex items-center gap-1 rounded-full bg-black/35 px-2 py-1 backdrop-blur-sm">
-                                <span className="font-semibold">
-                                  {currentRecipe.prepTimeMinutes + currentRecipe.cookTimeMinutes}
-                                </span>
-                                <span className="uppercase tracking-wide text-[10px]">
-                                  min total
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Details side */}
-                          <div className="w-full lg:w-1/2 p-5 sm:p-6 flex flex-col gap-3 sm:gap-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500 dark:text-neutral-400">
-                                Featured mock recipe
-                              </p>
-                              <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
-                                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                                {currentRecipe.difficulty}
-                              </div>
-                            </div>
-
-                            <h2 className="font-['Playfair_Display'] text-xl sm:text-2xl text-neutral-900 dark:text-amber-50 leading-snug line-clamp-2">
-                              {currentRecipe.title}
-                            </h2>
-                            {currentRecipe.subtitle && (
-                              <p className="text-xs sm:text-sm text-neutral-700/90 dark:text-neutral-200/80 line-clamp-2">
-                                {currentRecipe.subtitle}
-                              </p>
-                            )}
-
-                            <div className="flex flex-wrap items-center gap-2 text-[11px] sm:text-xs text-neutral-700/90 dark:text-neutral-200/80">
-                              <span className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-1">
-                                {currentRecipe.cuisine}
-                              </span>
-                              {currentRecipe.dietTags.slice(0, 3).map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-1"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                              {currentRecipe.dietTags.length > 3 && (
-                                <span className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                                  +{currentRecipe.dietTags.length - 3} more
-                                </span>
-                              )}
-                            </div>
-
-                            <p className="mt-1 text-xs sm:text-sm text-neutral-700/90 dark:text-neutral-200/80 line-clamp-3">
-                              {currentRecipe.description}
-                            </p>
-
-                            <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-                              <Button
-                                size="sm"
-                                className="bg-neutral-900 dark:bg-amber-50 text-amber-50 dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-amber-100"
-                                onClick={() => navigate(`/recipes/${currentRecipe.id}`)}
-                              >
-                                View recipe
-                              </Button>
-                              <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
-                                <span>
-                                  Serves {currentRecipe.servings}
-                                </span>
-                                {typeof currentRecipe.averageRating === "number" && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span>·</span>
-                                    <span>{currentRecipe.averageRating.toFixed(1)}★</span>
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
-                      </AnimatePresence>
-                    )}
-
-                    {/* Carousel controls */}
-                    {hasFeatured && (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-2 sm:px-3">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="pointer-events-auto h-8 w-8 rounded-full bg-white/85 dark:bg-neutral-900/85 border-none shadow-md text-neutral-800 dark:text-neutral-100"
-                          onClick={goPrev}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="pointer-events-auto h-8 w-8 rounded-full bg-white/85 dark:bg-neutral-900/85 border-none shadow-md text-neutral-800 dark:text-neutral-100"
-                          onClick={goNext}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
-
-                    {/* Dots */}
-                    {hasFeatured && (
-                      <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
-                        {featured.map((r, i) => (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() => goTo(i)}
-                            className={`h-1.5 rounded-full transition-all duration-200 ${
-                              i === safeIndex
-                                ? "w-5 bg-neutral-900 dark:bg-amber-50"
-                                : "w-2 bg-neutral-500/60 dark:bg-neutral-500/70"
-                            }`}
-                            aria-label={`Go to slide ${i + 1}`}
-                          />
-                        ))}
-                      </div>
-                    )}
+              {/* AI Generator Bar */}
+              <Card className="border border-[#e1d3c2] bg-white/80 backdrop-blur-sm shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold tracking-wide text-[#8b5e3c] uppercase">
+                    AI Recipe Sketchpad
+                  </CardTitle>
+                  <CardDescription className="text-[0.9rem] text-[#7b6048]">
+                    Type a prompt like “crispy tofu rice bowl, 20 minutes” and we’ll sketch a full
+                    recipe using our deterministic, frontend-only generator.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <SearchBar
+                    value={input}
+                    onChange={setInput}
+                    onImmediateChange={setInput}
+                    onSubmit={(value) => handleGenerate(value)}
+                    emphasis
+                    className="w-full"
+                    onGenerateClick={(value) => handleGenerate(value)}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[#8b6a4f]">
+                    <span>
+                      This is a <span className="font-semibold">simulation</span>: recipes live only
+                      in your browser via localStorage.
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInput("late-night pantry pasta with tomatoes and chili")}
+                        className="rounded-full border border-[#e1d3c2] bg-[#f9f5f0] px-3 py-1 text-[0.7rem] font-medium text-[#7b5a3f] hover:bg-white hover:text-[#3e2c23] transition-colors"
+                      >
+                        Try: pantry pasta
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInput("crispy miso tofu rice bowl, crunchy veg")}
+                        className="rounded-full border border-[#e1d3c2] bg-[#f9f5f0] px-3 py-1 text-[0.7rem] font-medium text-[#7b5a3f] hover:bg-white hover:text-[#3e2c23] transition-colors"
+                      >
+                        Try: tofu bowl
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 pt-1">
+                    <p className="text-xs text-[#8b6a4f]">
+                      No accounts, no servers — just playful, tactile recipes generated on the fly.
+                    </p>
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#d94f4f] hover:bg-[#c44646] text-white px-5 py-2.5 text-sm font-semibold shadow-sm disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => handleGenerate()}
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                          Generating…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" aria-hidden="true" />
+                          Generate recipe
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
             </div>
+
+            {/* Right: Highlighted cards */}
+            <div className="lg:col-span-5 min-w-0 flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:gap-5">
+                {heroFeatured.map((recipe, index) => (
+                  <motion.div
+                    key={recipe.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 * index, duration: 0.3, ease: "easeOut" }}
+                    className={
+                      index === 0
+                        ? "col-span-2 sm:col-span-1 sm:row-span-2"
+                        : "col-span-2 sm:col-span-1"
+                    }
+                  >
+                    <RecipeCard recipe={recipe} showFavoriteToggle dense={index !== 0} />
+                  </motion.div>
+                ))}
+              </div>
+              <p className="text-xs text-[#8b6a4f]">
+                Featured picks are seeded mock recipes — new AI creations will quietly join the
+                gallery below.
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Featured Recipes Masonry Section */}
+      <section className="w-full bg-[#f7efe5] border-t border-[#e1d3c2] py-10 lg:py-14">
+        <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 space-y-6 lg:space-y-8">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-xl sm:text-2xl font-['Playfair_Display'] font-semibold tracking-tight">
+                Tactile Table of Ideas
+              </h2>
+              <p className="text-sm sm:text-base text-[#7b6048] max-w-2xl">
+                Wander through a mix of hand-crafted mock recipes and your own AI-generated dishes.
+                Everything here is stored only in your browser.
+              </p>
+            </div>
+          </div>
+
+          {/* Masonry-like layout using CSS columns on large screens */}
+          <div className="hidden lg:block" aria-label="Featured recipes grid">
+            <div className="columns-3 xl:columns-4 gap-6 [column-fill:_balance]">
+              {moreFeatured.map((recipe, index) => (
+                <motion.div
+                  key={recipe.id}
+                  custom={index}
+                  variants={gridItemVariants}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, margin: "-40px" }}
+                  className="mb-6 break-inside-avoid"
+                >
+                  <RecipeCard recipe={recipe} showFavoriteToggle />
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
+          {/* Fallback responsive grid on small / medium screens */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-5" aria-label="Featured recipes grid">
+            {moreFeatured.map((recipe, index) => (
+              <motion.div
+                key={recipe.id}
+                custom={index}
+                variants={gridItemVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-40px" }}
+              >
+                <RecipeCard recipe={recipe} showFavoriteToggle />
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 w-full max-w-[1200px] mx-auto px-6 lg:px-10 pb-20 flex flex-col gap-16">
-        {/* AI Generator */}
-        <section id="ai-generator" className="scroll-mt-24">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-['Playfair_Display'] text-2xl sm:text-3xl text-neutral-900 dark:text-amber-50">
-                In-browser AI recipe generator
-              </h2>
-              <p className="mt-1 text-sm text-neutral-700/90 dark:text-neutral-200/80 max-w-xl">
-                All prompts and generated recipes stay in your browser. Refreshing the
-                page will keep them around via localStorage.
-              </p>
-            </div>
-            <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-neutral-600 dark:text-neutral-300">
-              <Sparkles className="h-3 w-3" />
-              mock-only
-            </span>
-          </div>
+      {/* AI Result Dialog */}
+      <Dialog open={dialogOpen && !!generated} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-[#f9f5f0] border border-[#e1d3c2]">
+          <DialogHeader className="space-y-2">
+            <DialogTitle className="font-['Playfair_Display'] text-2xl">
+              AI-Crafted Recipe Preview
+            </DialogTitle>
+            <DialogDescription className="text-sm text-[#7b6048]">
+              This recipe was generated entirely on the client using our deterministic mock AI.
+              Adjust, riff, and favorite it to keep it around.
+            </DialogDescription>
+          </DialogHeader>
 
-          <AIRecipeGenerator />
-        </section>
-
-        {/* Featured grid */}
-        <section className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-['Playfair_Display'] text-2xl sm:text-3xl text-neutral-900 dark:text-amber-50">
-                Featured mock recipes
-              </h2>
-              <p className="mt-1 text-sm text-neutral-700/90 dark:text-neutral-200/80">
-                These are seeded examples powered by the client-side store – perfect
-                for prototyping listing/detail views.
-              </p>
-            </div>
-            <Link
-              to="/recipes"
-              className="text-sm font-medium text-[#E76F51] hover:text-[#e45d3c]"
-            >
-              View all
-            </Link>
-          </div>
-
-          {!hasFeatured && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              <LoadingSkeleton />
-              <LoadingSkeleton />
-              <LoadingSkeleton />
+          {generated && (
+            <div className="mt-2">
+              <RecipeDetail recipe={generated} inDialog />
             </div>
           )}
 
-          {hasFeatured && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {featured.map((recipe) => (
-                <RecipeCard key={recipe.id} recipe={recipe} />
-              ))}
+          <DialogFooter className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-xs text-[#8b6a4f]">
+              Favorites, ratings, and generated recipes are all mocked and stored in localStorage
+              only.
+            </p>
+            <div className="flex flex-wrap gap-3 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-[#d7c6b1] text-[#7b6048] hover:bg-[#f3e4d4]"
+                onClick={() => setDialogOpen(false)}
+              >
+                Close
+              </Button>
+              {generated && (
+                <Button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full bg-[#d94f4f] hover:bg-[#c44646] text-white px-4 py-2 text-sm font-semibold shadow-sm transition-colors"
+                  onClick={onSaveFavoriteFromDialog}
+                >
+                  {isFavorite(generated.id) ? "Remove from favorites" : "Save to favorites"}
+                </Button>
+              )}
             </div>
-          )}
-        </section>
-      </main>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

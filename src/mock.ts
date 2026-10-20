@@ -1,1101 +1,682 @@
-// src/mock.ts
-// Centralized mock data store and client-side state for the AI Recipe Generator app.
-// NOTE: This is a 100% frontend-only mock implementation with localStorage persistence.
-// There is NO real backend or AI model – all generation and data are simulated in-browser.
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  ReactNode,
+} from "react";
 
-import { useEffect, useSyncExternalStore } from "react";
+/**
+ * IMPORTANT NOTE
+ * 100% FRONTEND-ONLY MOCK IMPLEMENTATION – NO BACKEND.
+ * All data, AI generation, and persistence are simulated in-memory with
+ * localStorage. This file is the single source of truth for the app.
+ */
 
-// ----------------------
-// Types & Interfaces
-// ----------------------
+// ---------- Types ----------
 
-export type CuisineType =
-  | "mediterranean"
-  | "italian"
-  | "mexican"
-  | "asian"
-  | "middle-eastern"
-  | "indian"
-  | "american"
-  | "fusion";
-
-export type DietTag =
-  | "vegan"
-  | "vegetarian"
-  | "pescetarian"
-  | "pescatarian"
-  | "gluten-free"
-  | "dairy-free"
-  | "low-carb"
-  | "high-protein"
-  | "comfort";
+export type DietaryFlag = "vegan" | "vegetarian" | "gluten-free" | "nut-free" | "dairy-free";
 
 export interface Ingredient {
   id: string;
   name: string;
-  quantity: string; // e.g. "1 cup", "2 tbsp"
-  notes?: string;
-}
-
-export interface Review {
-  id: string;
-  recipeId: string;
-  authorName: string;
-  rating: number; // 1-5
-  comment: string;
-  createdAt: string; // ISO string
+  quantity?: string;
 }
 
 export interface Recipe {
   id: string;
   title: string;
-  subtitle?: string;
   description: string;
-  heroImageUrl: string;
-  accentColor: string; // for cards / hero surfaces
-  cuisine: CuisineType;
-  dietTags: DietTag[];
+  image: string; // URL or data URI
+  cuisine: string;
+  tags: string[];
+  dietary: DietaryFlag[];
   prepTimeMinutes: number;
   cookTimeMinutes: number;
   servings: number;
-  difficulty: "easy" | "medium" | "advanced";
   ingredients: Ingredient[];
-  instructions: string[]; // ordered steps
-  createdAt: string;
-  updatedAt: string;
-  isAIgenerated?: boolean;
-  aiPromptSummary?: string;
-  averageRating?: number; // derived but persisted for simplicity
-  ratingCount?: number; // derived but persisted for simplicity
+  instructions: string[];
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+  isGenerated?: boolean;
 }
 
 export interface UserPreferences {
-  id: string; // single user in this mock implementation
-  name: string;
-  avatarColor: string;
-  dietary: {
-    vegan: boolean;
-    vegetarian: boolean;
-    glutenFree: boolean;
-    dairyFree: boolean;
-  };
-  favoriteCuisines: CuisineType[];
-  maxPrepTimeMinutes?: number;
-  lastSearchQuery?: string;
-  lastSearchCuisine?: CuisineType | "any";
-  lastSearchDietTags?: DietTag[];
-}
-
-export interface AIGenerationStatus {
-  isLoading: boolean;
-  lastPrompt?: string;
-  lastError?: string | null;
-  lastGeneratedId?: string | null;
-}
-
-export interface AIRecipeParams {
-  ingredientsText: string;
-  dietary: {
-    vegan?: boolean;
-    vegetarian?: boolean;
-    glutenFree?: boolean;
-    dairyFree?: boolean;
-  };
-  cuisineVibe?: CuisineType | "surprise";
-}
-
-export interface RecipeSearchFilters {
-  cuisine?: CuisineType | "any";
-  dietTags?: DietTag[];
+  dietaryRestrictions: DietaryFlag[];
+  preferredCuisines: string[];
+  spiceLevel: 1 | 2 | 3 | 4 | 5; // 1=mild, 5=very spicy
   maxPrepTimeMinutes?: number;
 }
 
-export interface PersistedState {
-  version: number;
+export interface RatingState {
+  recipeId: string;
+  rating: number; // 1-5
+}
+
+export interface AppState {
   recipes: Recipe[];
-  featuredIds: string[];
-  savedRecipeIds: string[];
+  generatedRecipes: Recipe[];
+  favorites: string[]; // recipe IDs
   preferences: UserPreferences;
-  aiStatus: AIGenerationStatus;
-  lastGeneratedId: string | null;
-  reviews: Review[];
+  recentSearches: string[];
+  ratings: RatingState[];
 }
 
-// ----------------------
-// Constants & Safe Storage
-// ----------------------
+// ---------- Safe Storage Helpers (mocked persistence) ----------
 
-const STORAGE_KEY = "ai-recipe-generator-state";
-const SCHEMA_VERSION = 1;
-
-const isBrowser = typeof window !== "undefined";
+const STORAGE_KEY = "tactilechef_app_state_v1";
 
 const safeStorage = {
-  getItem(key: string): string | null {
-    if (!isBrowser) return null;
+  get(): AppState | null {
+    if (typeof window === "undefined") return null;
     try {
-      return window.localStorage.getItem(key);
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as AppState;
+      if (!parsed || typeof parsed !== "object") return null;
+      return parsed;
     } catch {
       return null;
     }
   },
-  setItem(key: string, value: string): void {
-    if (!isBrowser) return;
+  set(state: AppState) {
+    if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(key, value);
+      const serialized = JSON.stringify(state);
+      window.localStorage.setItem(STORAGE_KEY, serialized);
     } catch {
-      // ignore quota / privacy errors
+      // ignore write errors (private mode, quota, etc.)
     }
   },
-  removeItem(key: string): void {
-    if (!isBrowser) return;
+  clear() {
+    if (typeof window === "undefined") return;
     try {
-      window.localStorage.removeItem(key);
+      window.localStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
   },
 };
 
-// ----------------------
-// Utilities
-// ----------------------
+// ---------- Mock Data (no backend) ----------
 
-const nowIso = () => new Date().toISOString();
+// NOTE: Images are mocked with simple gradient placeholders to avoid heavy assets.
 
-const createId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).substring(2, 10);
-};
+const now = () => new Date().toISOString();
 
-const clamp = (val: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, val));
-
-// ----------------------
-// Initial Seed Data
-// ----------------------
-
-const seedRecipes = (): Recipe[] => {
-  const baseDate = new Date();
-
-  const recipe1Id = createId();
-  const recipe2Id = createId();
-  const recipe3Id = createId();
-  const recipe4Id = createId();
-
-  return [
-    {
-      id: recipe1Id,
-      title: "Roasted Citrus Herb Salmon Bowl",
-      subtitle: "Bright, zesty, and vibrant weeknight dinner",
-      description:
-        "Slow-roasted salmon with charred citrus, herby quinoa, and crunchy seasonal vegetables. A sunlit bowl that tastes like a weekend escape.",
-      heroImageUrl:
-        "https://images.pexels.com/photos/3296583/pexels-photo-3296583.jpeg?auto=compress&cs=tinysrgb&w=1600",
-      accentColor: "#F4A261", // warm apricot
-      cuisine: "mediterranean",
-      dietTags: ["pescatarian", "gluten-free", "high-protein"],
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 25,
-      servings: 2,
-      difficulty: "medium",
-      ingredients: [
-        {
-          id: createId(),
-          name: "Salmon fillets",
-          quantity: "2 x 150 g",
-          notes: "skin-on if possible",
-        },
-        {
-          id: createId(),
-          name: "Orange",
-          quantity: "1",
-          notes: "thinly sliced",
-        },
-        {
-          id: createId(),
-          name: "Lemon",
-          quantity: "1",
-          notes: "thinly sliced",
-        },
-        {
-          id: createId(),
-          name: "Cooked quinoa",
-          quantity: "1 1/2 cups",
-        },
-        {
-          id: createId(),
-          name: "Olive oil",
-          quantity: "2 tbsp",
-        },
-        {
-          id: createId(),
-          name: "Fresh dill",
-          quantity: "2 tbsp",
-          notes: "chopped",
-        },
-        {
-          id: createId(),
-          name: "Roasted vegetables",
-          quantity: "2 cups",
-          notes: "e.g. broccolini, carrots, fennel",
-        },
-      ],
-      instructions: [
-        "Preheat the oven to 180°C / 350°F and line a baking tray with parchment.",
-        "Arrange citrus slices on the tray, drizzle with olive oil, and place salmon on top.",
-        "Season salmon with salt, pepper, and half of the chopped dill.",
-        "Roast for 18–22 minutes, until salmon is just opaque and flakes easily.",
-        "Warm the cooked quinoa and toss with remaining dill, olive oil, and a squeeze of lemon.",
-        "Assemble bowls with quinoa, roasted vegetables, and salmon with citrus on top.",
-      ],
-      createdAt: baseDate.toISOString(),
-      updatedAt: baseDate.toISOString(),
-      isAIgenerated: false,
-      aiPromptSummary: undefined,
-      averageRating: 4.7,
-      ratingCount: 34,
-    },
-    {
-      id: recipe2Id,
-      title: "Cozy Charred Tomato Rigatoni",
-      subtitle: "Silky sauce, blistered tomatoes, and crunchy herbed crumbs",
-      description:
-        "A hug-in-a-bowl pasta with slow-cooked garlic, charred cherry tomatoes, and a whisper of chili, finished with lemony breadcrumbs.",
-      heroImageUrl:
-        "https://images.pexels.com/photos/1279330/pexels-photo-1279330.jpeg?auto=compress&cs=tinysrgb&w=1600",
-      accentColor: "#E76F51", // terracotta
-      cuisine: "italian",
-      dietTags: ["vegetarian", "comfort"],
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 25,
-      servings: 3,
-      difficulty: "easy",
-      ingredients: [
-        {
-          id: createId(),
-          name: "Rigatoni",
-          quantity: "300 g",
-        },
-        {
-          id: createId(),
-          name: "Cherry tomatoes",
-          quantity: "400 g",
-        },
-        {
-          id: createId(),
-          name: "Garlic cloves",
-          quantity: "4",
-          notes: "thinly sliced",
-        },
-        {
-          id: createId(),
-          name: "Crushed chili flakes",
-          quantity: "1/2 tsp",
-        },
-        {
-          id: createId(),
-          name: "Panko breadcrumbs",
-          quantity: "1/2 cup",
-        },
-        {
-          id: createId(),
-          name: "Parmesan cheese",
-          quantity: "1/2 cup",
-          notes: "finely grated",
-        },
-        {
-          id: createId(),
-          name: "Fresh basil",
-          quantity: "1/3 cup",
-          notes: "torn",
-        },
-      ],
-      instructions: [
-        "Cook rigatoni in salted boiling water until al dente; reserve 1 cup of pasta water.",
-        "In a large skillet, warm olive oil and gently cook sliced garlic until fragrant.",
-        "Add cherry tomatoes and chili flakes; cook on high heat until tomatoes blister and burst.",
-        "Fold in cooked pasta with splashes of pasta water, tossing to create a glossy sauce.",
-        "Toast panko in a dry pan with olive oil and a pinch of salt until golden, then mix with lemon zest and parmesan.",
-        "Serve pasta topped with herbed crumbs and plenty of fresh basil.",
-      ],
-      createdAt: new Date(baseDate.getTime() - 1000 * 60 * 60 * 24).toISOString(),
-      updatedAt: new Date(baseDate.getTime() - 1000 * 60 * 60 * 24).toISOString(),
-      isAIgenerated: false,
-      aiPromptSummary: undefined,
-      averageRating: 4.9,
-      ratingCount: 58,
-    },
-    {
-      id: recipe3Id,
-      title: "Golden Turmeric Coconut Lentil Stew",
-      subtitle: "Vibrant plant-based comfort in one pot",
-      description:
-        "Creamy red lentils simmered with coconut milk, turmeric, and ginger, finished with lime and crunchy seeds.",
-      heroImageUrl:
-        "https://images.pexels.com/photos/1640774/pexels-photo-1640774.jpeg?auto=compress&cs=tinysrgb&w=1600",
-      accentColor: "#E9C46A", // golden turmeric
-      cuisine: "indian",
-      dietTags: ["vegan", "gluten-free", "high-protein", "comfort"],
-      prepTimeMinutes: 15,
-      cookTimeMinutes: 30,
-      servings: 4,
-      difficulty: "easy",
-      ingredients: [
-        {
-          id: createId(),
-          name: "Red lentils",
-          quantity: "1 1/2 cups",
-          notes: "rinsed",
-        },
-        {
-          id: createId(),
-          name: "Coconut milk",
-          quantity: "1 can (400 ml)",
-        },
-        {
-          id: createId(),
-          name: "Vegetable stock",
-          quantity: "3 cups",
-        },
-        {
-          id: createId(),
-          name: "Onion",
-          quantity: "1",
-          notes: "finely chopped",
-        },
-        {
-          id: createId(),
-          name: "Fresh ginger",
-          quantity: "2 tbsp",
-          notes: "grated",
-        },
-        {
-          id: createId(),
-          name: "Ground turmeric",
-          quantity: "1 1/2 tsp",
-        },
-        {
-          id: createId(),
-          name: "Spinach",
-          quantity: "3 cups",
-          notes: "roughly chopped",
-        },
-      ],
-      instructions: [
-        "Sauté onion in coconut oil until translucent, then add garlic and ginger.",
-        "Stir in turmeric and lentils, coating them in the aromatics.",
-        "Pour in vegetable stock and coconut milk, bring to a simmer.",
-        "Cook for 20–25 minutes, stirring occasionally, until lentils are tender and creamy.",
-        "Fold in spinach until wilted; season with salt, pepper, and lime juice.",
-        "Serve with warm flatbread or over fluffy rice, topped with toasted seeds.",
-      ],
-      createdAt: new Date(baseDate.getTime() - 1000 * 60 * 60 * 48).toISOString(),
-      updatedAt: new Date(baseDate.getTime() - 1000 * 60 * 60 * 48).toISOString(),
-      isAIgenerated: false,
-      aiPromptSummary: undefined,
-      averageRating: 4.8,
-      ratingCount: 41,
-    },
-    {
-      id: recipe4Id,
-      title: "Crispy Sesame Tofu Lettuce Wraps",
-      subtitle: "Fresh, crunchy, and weeknight-fast",
-      description:
-        "Crisp-edged tofu tossed in a glossy sesame sauce, tucked into cool lettuce cups with quick pickles.",
-      heroImageUrl:
-        "https://images.pexels.com/photos/3731474/pexels-photo-3731474.jpeg?auto=compress&cs=tinysrgb&w=1600",
-      accentColor: "#2A9D8F", // teal green
-      cuisine: "asian",
-      dietTags: ["vegan", "dairy-free", "low-carb"],
-      prepTimeMinutes: 20,
-      cookTimeMinutes: 20,
-      servings: 3,
-      difficulty: "medium",
-      ingredients: [
-        {
-          id: createId(),
-          name: "Firm tofu",
-          quantity: "400 g",
-          notes: "pressed and cubed",
-        },
-        {
-          id: createId(),
-          name: "Cornstarch",
-          quantity: "3 tbsp",
-        },
-        {
-          id: createId(),
-          name: "Soy sauce or tamari",
-          quantity: "3 tbsp",
-        },
-        {
-          id: createId(),
-          name: "Maple syrup",
-          quantity: "1 1/2 tbsp",
-        },
-        {
-          id: createId(),
-          name: "Rice vinegar",
-          quantity: "1 tbsp",
-        },
-        {
-          id: createId(),
-          name: "Sesame oil",
-          quantity: "2 tsp",
-        },
-        {
-          id: createId(),
-          name: "Butter lettuce leaves",
-          quantity: "12",
-        },
-      ],
-      instructions: [
-        "Toss tofu cubes in cornstarch and a pinch of salt until coated.",
-        "Pan-fry tofu in neutral oil over medium-high heat until crisp on all sides.",
-        "Whisk soy sauce, maple syrup, rice vinegar, garlic, and sesame oil in a bowl.",
-        "Pour sauce over tofu and cook until thickened and glossy.",
-        "Serve tofu in lettuce leaves with pickled veggies, herbs, and toasted sesame seeds.",
-      ],
-      createdAt: new Date(baseDate.getTime() - 1000 * 60 * 60 * 72).toISOString(),
-      updatedAt: new Date(baseDate.getTime() - 1000 * 60 * 60 * 72).toISOString(),
-      isAIgenerated: false,
-      aiPromptSummary: undefined,
-      averageRating: 4.6,
-      ratingCount: 29,
-    },
-  ];
-};
-
-const seedPreferences = (): UserPreferences => ({
-  id: "mock-user-1",
-  name: "Guest Foodie",
-  avatarColor: "#E76F51",
-  dietary: {
-    vegan: false,
-    vegetarian: false,
-    glutenFree: false,
-    dairyFree: false,
-  },
-  favoriteCuisines: ["mediterranean", "italian", "asian"],
-  maxPrepTimeMinutes: 40,
-  lastSearchQuery: "",
-  lastSearchCuisine: "any",
-  lastSearchDietTags: [],
-});
-
-const seedReviews = (recipes: Recipe[]): Review[] => {
-  const [r1, r2, r3] = recipes;
-  const base = new Date();
-  return [
-    {
-      id: createId(),
-      recipeId: r1.id,
-      authorName: "Amelia",
-      rating: 5,
-      comment: "Made this on a Sunday and it tasted like vacation. The citrus is magic!",
-      createdAt: new Date(base.getTime() - 1000 * 60 * 60 * 10).toISOString(),
-    },
-    {
-      id: createId(),
-      recipeId: r2.id,
-      authorName: "Jonas",
-      rating: 5,
-      comment: "The lemony breadcrumbs absolutely make this. New weeknight staple.",
-      createdAt: new Date(base.getTime() - 1000 * 60 * 60 * 20).toISOString(),
-    },
-    {
-      id: createId(),
-      recipeId: r3.id,
-      authorName: "Priya",
-      rating: 4,
-      comment:
-        "So cozy and vibrant. I added roasted cauliflower on top and it was perfect.",
-      createdAt: new Date(base.getTime() - 1000 * 60 * 60 * 30).toISOString(),
-    },
-  ];
-};
-
-const createInitialState = (): PersistedState => {
-  const recipes = seedRecipes();
-  const reviews = seedReviews(recipes);
-
-  const featuredIds = recipes.slice(0, 3).map((r) => r.id);
-
-  return {
-    version: SCHEMA_VERSION,
-    recipes,
-    featuredIds,
-    savedRecipeIds: [recipes[1].id],
-    preferences: seedPreferences(),
-    aiStatus: {
-      isLoading: false,
-      lastPrompt: undefined,
-      lastError: null,
-      lastGeneratedId: null,
-    },
-    lastGeneratedId: null,
-    reviews,
-  };
-};
-
-// ----------------------
-// Persistence & Migration
-// ----------------------
-
-export const loadState = (): PersistedState => {
-  const raw = safeStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return createInitialState();
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<PersistedState>;
-
-    // basic shape validation and migration
-    const version = typeof parsed.version === "number" ? parsed.version : 0;
-
-    if (version !== SCHEMA_VERSION) {
-      // simple migration approach: start fresh but try to carry over user prefs and saved recipes
-      const fresh = createInitialState();
-      return {
-        ...fresh,
-        savedRecipeIds: parsed.savedRecipeIds ?? fresh.savedRecipeIds,
-        preferences: parsed.preferences ?? fresh.preferences,
-      };
-    }
-
-    const freshFallback = createInitialState();
-
-    return {
-      version: SCHEMA_VERSION,
-      recipes:
-        parsed.recipes && Array.isArray(parsed.recipes)
-          ? parsed.recipes
-          : freshFallback.recipes,
-      featuredIds:
-        parsed.featuredIds && Array.isArray(parsed.featuredIds)
-          ? parsed.featuredIds
-          : freshFallback.featuredIds,
-      savedRecipeIds:
-        parsed.savedRecipeIds && Array.isArray(parsed.savedRecipeIds)
-          ? parsed.savedRecipeIds
-          : freshFallback.savedRecipeIds,
-      preferences: parsed.preferences ?? freshFallback.preferences,
-      aiStatus: parsed.aiStatus ?? freshFallback.aiStatus,
-      lastGeneratedId:
-        typeof parsed.lastGeneratedId === "string" || parsed.lastGeneratedId === null
-          ? parsed.lastGeneratedId
-          : freshFallback.lastGeneratedId,
-      reviews:
-        parsed.reviews && Array.isArray(parsed.reviews)
-          ? parsed.reviews
-          : freshFallback.reviews,
-    };
-  } catch {
-    return createInitialState();
-  }
-};
-
-let state: PersistedState = loadState();
-
-const listeners = new Set<() => void>();
-
-const notify = () => {
-  for (const listener of listeners) {
-    try {
-      listener();
-    } catch {
-      // ignore individual listener errors
-    }
-  }
-};
-
-const persist = () => {
-  safeStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      ...state,
-      // Ensure version consistency
-      version: SCHEMA_VERSION,
-    })
-  );
-};
-
-// ----------------------
-// Store Core Helpers
-// ----------------------
-
-export const subscribe = (listener: () => void): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
-export const getState = (): PersistedState => state;
-
-export const setState = (partial: Partial<PersistedState>): void => {
-  state = { ...state, ...partial };
-  persist();
-  notify();
-};
-
-// React hook for convenient subscription in components
-export const useMockStore = <T,>(selector: (s: PersistedState) => T): T => {
-  return useSyncExternalStore(
-    subscribe,
-    () => selector(getState()),
-    () => selector(state)
-  );
-};
-
-// ----------------------
-// Domain Helpers
-// ----------------------
-
-export const upsertPreferences = (patch: Partial<UserPreferences>): void => {
-  const current = state.preferences;
-  const updated: UserPreferences = {
-    ...current,
-    ...patch,
-    dietary: {
-      ...current.dietary,
-      ...(patch.dietary ?? {}),
-    },
-    favoriteCuisines: patch.favoriteCuisines ?? current.favoriteCuisines,
-  };
-  setState({ preferences: updated });
-};
-
-export const toggleSavedRecipe = (id: string): void => {
-  const exists = state.savedRecipeIds.includes(id);
-  const savedRecipeIds = exists
-    ? state.savedRecipeIds.filter((r) => r !== id)
-    : [...state.savedRecipeIds, id];
-  setState({ savedRecipeIds });
-};
-
-export interface ReviewInput {
-  authorName: string;
-  rating: number;
-  comment: string;
-}
-
-export const addReview = (recipeId: string, input: ReviewInput): Review | null => {
-  const recipe = state.recipes.find((r) => r.id === recipeId);
-  if (!recipe) return null;
-
-  const review: Review = {
-    id: createId(),
-    recipeId,
-    authorName: input.authorName.trim() || "Anonymous",
-    rating: clamp(Math.round(input.rating), 1, 5),
-    comment: input.comment.trim(),
-    createdAt: nowIso(),
-  };
-
-  const reviews = [...state.reviews, review];
-
-  const recipeReviews = reviews.filter((r) => r.recipeId === recipeId);
-  const total = recipeReviews.reduce((sum, r) => sum + r.rating, 0);
-  const avg = recipeReviews.length ? total / recipeReviews.length : undefined;
-
-  const recipes = state.recipes.map((r) =>
-    r.id === recipeId
-      ? {
-          ...r,
-          averageRating: avg,
-          ratingCount: recipeReviews.length,
-          updatedAt: nowIso(),
-        }
-      : r
-  );
-
-  setState({ reviews, recipes });
-
-  return review;
-};
-
-export const rateRecipe = (recipeId: string, rating: number): void => {
-  // simple rating shortcut: record anonymous review with empty comment
-  addReview(recipeId, {
-    authorName: "",
-    rating,
-    comment: "",
-  });
-};
-
-export const addRecipe = (
-  recipe: Omit<Recipe, "id" | "createdAt" | "updatedAt">
-): Recipe => {
-  const id = createId();
-  const timestamp = nowIso();
-  const fullRecipe: Recipe = {
-    ...recipe,
-    id,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-
-  const recipes = [fullRecipe, ...state.recipes];
-  setState({
-    recipes,
-    lastGeneratedId: fullRecipe.isAIgenerated ? id : state.lastGeneratedId,
-  });
-  return fullRecipe;
-};
-
-export const updateRecipe = (recipe: Recipe): Recipe | null => {
-  const exists = state.recipes.find((r) => r.id === recipe.id);
-  if (!exists) return null;
-
-  const updated: Recipe = {
-    ...exists,
-    ...recipe,
-    updatedAt: nowIso(),
-  };
-
-  const recipes = state.recipes.map((r) => (r.id === recipe.id ? updated : r));
-  setState({ recipes });
-  return updated;
-};
-
-export const deleteRecipe = (id: string): void => {
-  const recipes = state.recipes.filter((r) => r.id !== id);
-  const savedRecipeIds = state.savedRecipeIds.filter((rid) => rid !== id);
-  const featuredIds = state.featuredIds.filter((rid) => rid !== id);
-  const reviews = state.reviews.filter((rev) => rev.recipeId !== id);
-
-  setState({ recipes, savedRecipeIds, featuredIds, reviews });
-};
-
-export const getRecipeById = (id: string): Recipe | undefined => {
-  return state.recipes.find((r) => r.id === id);
-};
-
-export const searchRecipes = (
-  query: string,
-  filters: RecipeSearchFilters
-): Recipe[] => {
-  const text = query.trim().toLowerCase();
-
-  return state.recipes.filter((recipe) => {
-    if (filters.cuisine && filters.cuisine !== "any" && recipe.cuisine !== filters.cuisine) {
-      return false;
-    }
-
-    if (
-      filters.maxPrepTimeMinutes &&
-      recipe.prepTimeMinutes > filters.maxPrepTimeMinutes
-    ) {
-      return false;
-    }
-
-    if (filters.dietTags && filters.dietTags.length > 0) {
-      const hasAllTags = filters.dietTags.every((tag) => recipe.dietTags.includes(tag));
-      if (!hasAllTags) return false;
-    }
-
-    if (!text) return true;
-
-    const haystack = (
-      recipe.title +
-      " " +
-      (recipe.subtitle || "") +
-      " " +
-      recipe.description +
-      " " +
-      recipe.ingredients.map((i) => i.name).join(" ") +
-      " " +
-      recipe.dietTags.join(" ") +
-      " " +
-      recipe.cuisine
-    ).toLowerCase();
-
-    return haystack.includes(text);
-  });
-};
-
-export const getFeaturedRecipes = (): Recipe[] => {
-  const { recipes, featuredIds } = state;
-  const featured = featuredIds
-    .map((id) => recipes.find((r) => r.id === id))
-    .filter((r): r is Recipe => Boolean(r));
-
-  if (featured.length === 0) {
-    return recipes.slice(0, 3);
-  }
-  return featured;
-};
-
-export const listSavedRecipes = (): Recipe[] => {
-  const { recipes, savedRecipeIds } = state;
-  const map = new Set(savedRecipeIds);
-  return recipes.filter((r) => map.has(r.id));
-};
-
-// ----------------------
-// AI Recipe Generation (Mock)
-// ----------------------
-
-const pickRandom = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-
-const cuisineVibes: Record<
-  CuisineType,
+const baseMockRecipes: Recipe[] = [
   {
-    accentColor: string;
-    titleSuffix: string[];
-    heroCopy: string[];
-  }
-> = {
-  mediterranean: {
-    accentColor: "#F4A261",
-    titleSuffix: ["Sun Bowl", "Coastal Platter", "Olive Grove Feast"],
-    heroCopy: [
-      "Bright, herby flavors with citrusy edges and seaside energy.",
-      "A breezy bowl layered with crunch, creaminess, and sunshine.",
+    id: "mock-1",
+    title: "Slow-Roasted Tomato Bucatini",
+    description:
+      "Thick bucatini pasta tangled with slow-roasted tomatoes, garlic, and silky olive oil, finished with basil and a touch of chili heat.",
+    image:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='%23f8e3d7'/><stop offset='1' stop-color='%23e0b9a0'/></linearGradient></defs><rect width='1200' height='800' fill='url(%23g)'/><text x='50%' y='52%' text-anchor='middle' fill='%233e2c23' font-family='serif' font-size='56'>Tomato Bucatini</text></svg>",
+    cuisine: "Italian",
+    tags: ["pasta", "comfort", "weeknight"],
+    dietary: ["vegetarian"],
+    prepTimeMinutes: 20,
+    cookTimeMinutes: 35,
+    servings: 4,
+    ingredients: [
+      { id: "i1", name: "bucatini", quantity: "400g" },
+      { id: "i2", name: "ripe tomatoes", quantity: "600g" },
+      { id: "i3", name: "garlic cloves", quantity: "4" },
+      { id: "i4", name: "extra-virgin olive oil", quantity: "4 tbsp" },
+      { id: "i5", name: "fresh basil", quantity: "1 handful" },
+      { id: "i6", name: "chili flakes", quantity: "1/2 tsp" },
+      { id: "i7", name: "salt" },
     ],
-  },
-  italian: {
-    accentColor: "#E76F51",
-    titleSuffix: ["Weeknight Pasta", "Slow Sunday Bake", "Rustic Skillet"],
-    heroCopy: [
-      "Silky, soulful comfort with just the right amount of drama.",
-      "Cozy, carb-forward and designed for long, chatty dinners.",
+    instructions: [
+      "Heat oven to 160°C (320°F). Halve tomatoes, toss with olive oil, sliced garlic, chili, and salt.",
+      "Roast tomatoes cut-side up for 35–40 minutes until jammy and caramelized at the edges.",
+      "Cook bucatini in well-salted water until just al dente. Reserve a mug of cooking water.",
+      "Tip roasted tomatoes and all pan juices into a wide skillet. Gently mash with a spoon.",
+      "Add drained bucatini with a splash of pasta water. Toss over low heat until glossy.",
+      "Finish with torn basil and a final drizzle of olive oil. Serve immediately.",
     ],
+    createdAt: now(),
+    updatedAt: now(),
   },
-  mexican: {
-    accentColor: "#E9C46A",
-    titleSuffix: ["Taco Night", "Street-Style Skillet", "Fiesta Bowl"],
-    heroCopy: [
-      "Limey, crunchy, and a touch smoky – built for sharing.",
-      "Colorful layers of heat, crunch, and cooling toppings.",
+  {
+    id: "mock-2",
+    title: "Citrus-Ginger Sheet Pan Salmon",
+    description:
+      "Roasted salmon nestled among caramelized citrus and tender greens, brushed with a gingery glaze that feels both bright and comforting.",
+    image:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='%23f6f2e8'/><stop offset='1' stop-color='%23f3c39b'/></linearGradient></defs><rect width='1200' height='800' fill='url(%23g)'/><text x='50%' y='52%' text-anchor='middle' fill='%233e2c23' font-family='serif' font-size='52'>Citrus Salmon</text></svg>",
+    cuisine: "Modern",
+    tags: ["sheet pan", "seafood", "weeknight"],
+    dietary: ["gluten-free"],
+    prepTimeMinutes: 15,
+    cookTimeMinutes: 18,
+    servings: 3,
+    ingredients: [
+      { id: "s1", name: "salmon fillets", quantity: "3" },
+      { id: "s2", name: "orange", quantity: "1, sliced" },
+      { id: "s3", name: "lemon", quantity: "1, sliced" },
+      { id: "s4", name: "fresh ginger", quantity: "2 tsp, grated" },
+      { id: "s5", name: "honey", quantity: "1 tbsp" },
+      { id: "s6", name: "tamari (gluten-free soy)", quantity: "1 tbsp" },
+      { id: "s7", name: "baby kale or spinach", quantity: "2 cups" },
     ],
-  },
-  asian: {
-    accentColor: "#2A9D8F",
-    titleSuffix: ["Noodle Bowl", "Stir-Fry", "Brothy Supper"],
-    heroCopy: [
-      "Layered aromatics, gentle heat, and a glossy finish.",
-      "Comfort built on ginger, garlic, and gentle spice.",
+    instructions: [
+      "Heat oven to 200°C (400°F). Line a sheet pan with parchment.",
+      "Whisk ginger, honey, tamari, and 1 tbsp olive oil into a loose glaze.",
+      "Arrange citrus slices on the tray, then lay salmon on top. Brush generously with glaze.",
+      "Roast for 10–12 minutes, until salmon is just opaque but still glossy.",
+      "Scatter greens around salmon, toss with pan juices, and return to oven for 2 minutes.",
+      "Serve with spoonfuls of the sticky citrus juices.",
     ],
+    createdAt: now(),
+    updatedAt: now(),
   },
-  "middle-eastern": {
-    accentColor: "#D98E73",
-    titleSuffix: ["Spiced Traybake", "Warm Grain Salad", "Market Platter"],
-    heroCopy: [
-      "Toasted spices, slow sweetness, and herby pops of green.",
-      "A table-friendly dish meant for scooping and sharing.",
+  {
+    id: "mock-3",
+    title: "Charred Miso Sesame Vegetables over Rice",
+    description:
+      "Smoky skillet-charred vegetables tossed in a savory-sweet miso sesame dressing, piled over fluffy rice for a deeply satisfying bowl.",
+    image:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='%23f5eee2'/><stop offset='1' stop-color='%23d3c6aa'/></linearGradient></defs><rect width='1200' height='800' fill='url(%23g)'/><text x='50%' y='52%' text-anchor='middle' fill='%233e2c23' font-family='serif' font-size='50'>Miso Veg Bowl</text></svg>",
+    cuisine: "Asian",
+    tags: ["bowl", "vegan", "meal prep"],
+    dietary: ["vegan", "dairy-free"],
+    prepTimeMinutes: 25,
+    cookTimeMinutes: 20,
+    servings: 4,
+    ingredients: [
+      { id: "m1", name: "short-grain rice", quantity: "2 cups cooked" },
+      { id: "m2", name: "broccoli florets", quantity: "2 cups" },
+      { id: "m3", name: "carrots", quantity: "2, sliced" },
+      { id: "m4", name: "snap peas", quantity: "1 cup" },
+      { id: "m5", name: "white miso", quantity: "2 tbsp" },
+      { id: "m6", name: "rice vinegar", quantity: "1 tbsp" },
+      { id: "m7", name: "toasted sesame oil", quantity: "2 tsp" },
+      { id: "m8", name: "sesame seeds", quantity: "1 tbsp" },
     ],
-  },
-  indian: {
-    accentColor: "#E29578",
-    titleSuffix: ["One-Pot Dal", "Layered Curry", "Fragrant Rice Bowl"],
-    heroCopy: [
-      "Deep, cozy spices with a creamy, spoonable texture.",
-      "Comfort built on toasty aromatics and vibrant color.",
+    instructions: [
+      "Whisk miso, rice vinegar, 1 tbsp water, and sesame oil into a loose dressing.",
+      "Heat a large skillet until very hot. Add a thin film of neutral oil.",
+      "Add vegetables in a single layer. Let char deeply before tossing.",
+      "When tender-crisp with dark edges, remove from heat and toss with dressing.",
+      "Serve vegetables over warm rice, finishing with sesame seeds.",
     ],
+    createdAt: now(),
+    updatedAt: now(),
   },
-  american: {
-    accentColor: "#F6AE2D",
-    titleSuffix: ["Sheet Pan Supper", "Backyard Bowl", "Cozy Skillet"],
-    heroCopy: [
-      "Casual, crowd-friendly comfort with little fuss.",
-      "A familiar favorite with a fresh, colorful twist.",
+  {
+    id: "mock-4",
+    title: "Warm Cinnamon-Cardamom Baked Oats",
+    description:
+      "Custardy baked oats scented with cinnamon and cardamom, scattered with nuts and fruit, like a cozy breakfast crumble.",
+    image:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0' stop-color='%23f7e9d8'/><stop offset='1' stop-color='%23e2bb8f'/></linearGradient></defs><rect width='1200' height='800' fill='url(%23g)'/><text x='50%' y='52%' text-anchor='middle' fill='%233e2c23' font-family='serif' font-size='50'>Baked Oats</text></svg>",
+    cuisine: "Brunch",
+    tags: ["breakfast", "baked", "comfort"],
+    dietary: ["vegetarian", "nut-free"],
+    prepTimeMinutes: 15,
+    cookTimeMinutes: 30,
+    servings: 6,
+    ingredients: [
+      { id: "b1", name: "rolled oats", quantity: "2 cups" },
+      { id: "b2", name: "milk or plant-based milk", quantity: "2 1/2 cups" },
+      { id: "b3", name: "eggs or flax eggs", quantity: "2" },
+      { id: "b4", name: "brown sugar", quantity: "1/3 cup" },
+      { id: "b5", name: "ground cinnamon", quantity: "1 1/2 tsp" },
+      { id: "b6", name: "ground cardamom", quantity: "1/2 tsp" },
+      { id: "b7", name: "berries or sliced fruit", quantity: "1 1/2 cups" },
     ],
-  },
-  fusion: {
-    accentColor: "#9B5DE5",
-    titleSuffix: ["Weeknight Mash-Up", "Borderless Bowl", "Playful Platter"],
-    heroCopy: [
-      "Unexpected pairings that somehow just work.",
-      "A playful mix of textures, sauces, and global cravings.",
+    instructions: [
+      "Heat oven to 180°C (350°F). Grease a medium baking dish.",
+      "Whisk milk, eggs, sugar, cinnamon, and cardamom until smooth.",
+      "Fold in oats and most of the fruit. Pour into the dish.",
+      "Scatter remaining fruit on top.",
+      "Bake 28–32 minutes until just set in the center with golden edges.",
+      "Serve warm with yogurt or cream.",
     ],
+    createdAt: now(),
+    updatedAt: now(),
   },
-};
-
-const heroImagePool: string[] = [
-  "https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg?auto=compress&cs=tinysrgb&w=1600",
-  "https://images.pexels.com/photos/1437267/pexels-photo-1437267.jpeg?auto=compress&cs=tinysrgb&w=1600",
-  "https://images.pexels.com/photos/5531454/pexels-photo-5531454.jpeg?auto=compress&cs=tinysrgb&w=1600",
-  "https://images.pexels.com/photos/3731476/pexels-photo-3731476.jpeg?auto=compress&cs=tinysrgb&w=1600",
-  "https://images.pexels.com/photos/3731475/pexels-photo-3731475.jpeg?auto=compress&cs=tinysrgb&w=1600",
 ];
 
-const difficultyFromIngredients = (count: number): Recipe["difficulty"] => {
-  if (count <= 6) return "easy";
-  if (count <= 10) return "medium";
-  return "advanced";
+// ---------- Defaults ----------
+
+export const defaultPreferences: UserPreferences = {
+  dietaryRestrictions: [],
+  preferredCuisines: ["Italian", "Asian", "Mexican", "Modern"],
+  spiceLevel: 2,
+  maxPrepTimeMinutes: undefined,
 };
 
-export const generateAIRecipe = async (params: AIRecipeParams): Promise<Recipe> => {
-  const prompt = params.ingredientsText.trim();
-
-  const prepState: AIGenerationStatus = {
-    isLoading: true,
-    lastPrompt: prompt,
-    lastError: null,
-    lastGeneratedId: state.lastGeneratedId,
-  };
-  setState({ aiStatus: prepState });
-
-  // Simulated latency 900–1800ms
-  const delay = 900 + Math.random() * 900;
-
-  // Introduce a small failure chance (10%) to mimic real AI behavior
-  const shouldFail = Math.random() < 0.1;
-
-  await new Promise((resolve) => setTimeout(resolve, delay));
-
-  if (!prompt || shouldFail) {
-    const errorMessage = !prompt
-      ? "Describe a few ingredients or cravings to generate a recipe."
-      : "The AI kitchen got a bit too steamy. Try generating again in a moment.";
-
-    const failState: AIGenerationStatus = {
-      isLoading: false,
-      lastPrompt: prompt,
-      lastError: errorMessage,
-      lastGeneratedId: state.lastGeneratedId,
-    };
-    setState({ aiStatus: failState });
-    throw new Error(errorMessage);
-  }
-
-  // Determine cuisine vibe
-  let cuisine: CuisineType;
-  if (!params.cuisineVibe || params.cuisineVibe === "surprise") {
-    const keys = Object.keys(cuisineVibes) as CuisineType[];
-    cuisine = pickRandom(keys);
-  } else {
-    cuisine = params.cuisineVibe;
-  }
-
-  const vibe = cuisineVibes[cuisine];
-
-  // Basic parsing of ingredients text into ingredient list
-  const rawItems = prompt
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const ingredientNames = rawItems.length > 0 ? rawItems : ["Pantry ingredients"];
-
-  const ingredients: Ingredient[] = ingredientNames.map((name) => ({
-    id: createId(),
-    name,
-    quantity: "to taste",
-  }));
-
-  const ingredientCount = ingredients.length;
-  const difficulty = difficultyFromIngredients(ingredientCount);
-
-  const baseTitle =
-    ingredientNames.length > 0
-      ? ingredientNames[0]
-          .split(" ")
-          .slice(0, 3)
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ")
-      : "Freestyle Kitchen";
-
-  const titleRaw = `${baseTitle} ${pickRandom(vibe.titleSuffix)}`;
-  const title = titleRaw.replace(/\s+/g, " ").trim();
-
-  const heroCopy = pickRandom(vibe.heroCopy);
-
-  const dietaryTags: DietTag[] = [];
-  if (params.dietary.vegan) dietaryTags.push("vegan", "dairy-free");
-  else if (params.dietary.vegetarian) dietaryTags.push("vegetarian");
-  if (params.dietary.glutenFree) dietaryTags.push("gluten-free");
-  if (params.dietary.dairyFree && !dietaryTags.includes("dairy-free"))
-    dietaryTags.push("dairy-free");
-
-  if (dietaryTags.length === 0) {
-    dietaryTags.push("comfort");
-  }
-
-  const prepTimeMinutes = clamp(10 + ingredientCount * 3, 10, 45);
-  const cookTimeMinutes = clamp(ingredientCount * 4 + 10, 15, 60);
-  const servings = [2, 3, 4][Math.floor(Math.random() * 3)];
-
-  const instructions: string[] = [
-    "Gather and prep all of your ingredients, chopping everything into comfortable, bite-sized pieces.",
-    "Warm a large pan or pot over medium heat with a generous drizzle of oil.",
-    "Layer in aromatics first (onions, garlic, ginger, spices), cooking until fragrant and just golden.",
-    "Add the remaining ingredients in stages, starting with those that take longer to soften.",
-    "Splash in water, stock, or coconut milk as needed to create a glossy sauce or cozy broth.",
-    "Simmer gently, tasting and adjusting with salt, acidity (like lemon or vinegar), and a touch of sweetness.",
-    "Finish with something fresh – herbs, citrus zest, crunchy toppings – and serve while everything is warm and vibrant.",
-  ];
-
-  const newRecipe: Omit<Recipe, "id" | "createdAt" | "updatedAt"> = {
-    title,
-    subtitle: heroCopy,
-    description:
-      "Generated by the in-browser AI test kitchen based on your ingredients and cravings. Tweak, riff, and make it your own.",
-    heroImageUrl: pickRandom(heroImagePool),
-    accentColor: vibe.accentColor,
-    cuisine,
-    dietTags: Array.from(new Set(dietaryTags)),
-    prepTimeMinutes,
-    cookTimeMinutes,
-    servings,
-    difficulty,
-    ingredients,
-    instructions,
-    isAIgenerated: true,
-    aiPromptSummary: prompt,
-    averageRating: undefined,
-    ratingCount: 0,
-  };
-
-  const stored = addRecipe(newRecipe);
-
-  const successStatus: AIGenerationStatus = {
-    isLoading: false,
-    lastPrompt: prompt,
-    lastError: null,
-    lastGeneratedId: stored.id,
-  };
-
-  setState({ aiStatus: successStatus, lastGeneratedId: stored.id });
-
-  return stored;
+const defaultState: AppState = {
+  recipes: baseMockRecipes,
+  generatedRecipes: [],
+  favorites: [],
+  preferences: defaultPreferences,
+  recentSearches: [],
+  ratings: [],
 };
 
-// ----------------------
-// Convenience Hooks / Actions
-// ----------------------
+// ---------- Utility helpers ----------
 
-export const useRecipes = () => useMockStore((s) => s.recipes);
-export const useFeaturedRecipes = () => useMockStore(getFeaturedRecipes);
-export const useSavedRecipeIds = () => useMockStore((s) => s.savedRecipeIds);
-export const usePreferences = () => useMockStore((s) => s.preferences);
-export const useAIStatus = () => useMockStore((s) => s.aiStatus);
-export const useReviewsForRecipe = (recipeId: string | undefined) =>
-  useMockStore((s) =>
-    recipeId ? s.reviews.filter((r) => r.recipeId === recipeId) : ([] as Review[])
-  );
+const ensureUnique = (arr: string[]): string[] => Array.from(new Set(arr));
 
-// Allow components to clear all local data (used in Profile / Settings)
-export const clearAllData = () => {
-  const fresh = createInitialState();
-  state = fresh;
-  persist();
-  notify();
+const normalizeQuery = (q: string) => q.trim().toLowerCase();
+
+const deriveAllRecipes = (state: AppState): Recipe[] => [
+  ...state.recipes,
+  ...state.generatedRecipes,
+];
+
+const findRating = (ratings: RatingState[], recipeId: string): number => {
+  const r = ratings.find((x) => x.recipeId === recipeId);
+  return r ? r.rating : 0;
 };
 
-// Keep preferences in sync with localStorage even if hook not used yet
-if (isBrowser) {
-  // Ensure initial persist in case this file was loaded but nothing changed yet
-  if (!safeStorage.getItem(STORAGE_KEY)) {
-    persist();
+// A deterministic pseudo-random number generator based on a string seed.
+const seededRandom = (seed: string): number => {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    h = (h << 5) - h + seed.charCodeAt(i);
+    // eslint-disable-next-line no-bitwise
+    h |= 0;
   }
+  const x = Math.sin(h) * 10000;
+  return x - Math.floor(x);
+};
+
+const randomIntFromSeed = (seed: string, min: number, max: number): number => {
+  const r = seededRandom(seed);
+  return Math.floor(r * (max - min + 1)) + min;
+};
+
+const titleCase = (text: string): string =>
+  text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+// ---------- Simulated AI Recipe Generator (mock, client-side only) ----------
+
+export interface GenerateRecipeOptions {
+  query: string;
+  preferences: UserPreferences;
 }
 
-// Informational summary for developers: This file mocks all data/state in-memory
-// with safe localStorage persistence, simulating a backend + AI while remaining
-// 100% client-side for a smooth MVP experience.
+const buildGeneratedRecipe = ({ query, preferences }: GenerateRecipeOptions): Recipe => {
+  const normalized = normalizeQuery(query) || "pantry supper";
+  const titleSeed = titleCase(normalized.replace(/[,.;]+/g, " "));
+
+  const cuisineCandidates = preferences.preferredCuisines.length
+    ? preferences.preferredCuisines
+    : ["Modern", "Italian", "Asian", "Mexican", "Brunch"];
+
+  const cuisineIndex = randomIntFromSeed(`${normalized}-cuisine`, 0, cuisineCandidates.length - 1);
+  const cuisine = cuisineCandidates[cuisineIndex];
+
+  const dietary: DietaryFlag[] = [...preferences.dietaryRestrictions];
+
+  // Add derived dietary hints
+  if (!dietary.includes("vegan") && normalized.includes("tofu")) dietary.push("vegan");
+  if (!dietary.includes("gluten-free") && normalized.includes("rice"))
+    dietary.push("gluten-free");
+
+  const seedBase = `${normalized}-${cuisine}-${preferences.spiceLevel}`;
+
+  const prepTime = preferences.maxPrepTimeMinutes
+    ? Math.min(
+        preferences.maxPrepTimeMinutes,
+        randomIntFromSeed(`${seedBase}-prep`, 10, 40),
+      )
+    : randomIntFromSeed(`${seedBase}-prep`, 12, 35);
+
+  const cookTime = randomIntFromSeed(`${seedBase}-cook`, 10, 40);
+
+  const servings = randomIntFromSeed(`${seedBase}-servings`, 2, 6);
+
+  const keyIngredients = normalized
+    .split(/[ ,]+/)
+    .filter((x) => x.length > 2)
+    .slice(0, 6);
+
+  const ingredients: Ingredient[] = (keyIngredients.length
+    ? keyIngredients
+    : ["olive oil", "garlic", "onion", "lemon", "herbs"]
+  ).map((name, idx) => ({
+    id: `g-${name}-${idx}`,
+    name,
+    quantity:
+      idx % 2 === 0
+        ? `${randomIntFromSeed(`${seedBase}-${idx}`, 1, 3)} ${
+            idx % 3 === 0 ? "tbsp" : "cups"
+          }`
+        : undefined,
+  }));
+
+  const spiceText =
+    preferences.spiceLevel <= 2
+      ? "gentle warmth"
+      : preferences.spiceLevel <= 4
+      ? "noticeable heat"
+      : "fiery heat";
+
+  const description = `A tactile, pantry-friendly ${cuisine.toLowerCase()}-inspired dish built around ${
+    keyIngredients.slice(0, 2).join(" and ") || "simple staples"
+  }, with ${spiceText} and a cozy, weeknight-friendly feel.`;
+
+  const baseTags = ["AI-crafted", "weeknight", "one-bowl"];
+  const cuisineTag = cuisine;
+  const dietTags = dietary.map((d) => titleCase(d.replace("-", " ")));
+
+  const tags = ensureUnique([...baseTags, cuisineTag, ...dietTags]);
+
+  const dietaryStr = dietary.length
+    ? `${dietary
+        .map((d) => d.replace("-", " "))
+        .join(", ")}`
+    : "flexible";
+
+  // dietaryStr is currently unused but kept for potential future UI use
+  void dietaryStr;
+
+  const instructions: string[] = [
+    `Prep your ingredients: gather ${ingredients
+      .slice(0, 4)
+      .map((i) => i.name)
+      .join(", ")}, plus any extras you love.`,
+    "Warm a wide pan over medium heat with a slick of olive oil. Soften aromatics, then layer in your key ingredients so they caramelize at the edges.",
+    `Deglaze the pan with a splash of stock, water, or wine, scraping up all the flavorful bits. Adjust seasoning with salt, acidity, and ${spiceText}.`,
+    "Fold everything together until glossy and cohesive. If serving with grains or pasta, loosen with a little cooking water for a silky coating.",
+    "Finish with something bright—lemon, herbs, or a drizzle of good oil—and serve immediately while the textures are still vivid.",
+  ];
+
+  const createdAt = now();
+
+  const id = `gen-${
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (crypto as any).randomUUID()
+      : Math.random().toString(36).slice(2)
+  }`;
+
+  const image =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+      `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'>` +
+        `<defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'>` +
+        `<stop offset='0' stop-color='#f9f5f0'/><stop offset='1' stop-color='#f1c3a5'/>` +
+        `</linearGradient></defs>` +
+        `<rect width='1200' height='800' fill='url(%23g)'/>` +
+        `<text x='50%' y='46%' text-anchor='middle' fill='#3e2c23' font-family='serif' font-size='48'>${titleSeed}</text>` +
+        `<text x='50%' y='58%' text-anchor='middle' fill='#7a5c4a' font-family='sans-serif' font-size='22'>AI-crafted ${cuisine} comfort</text>` +
+        `</svg>`,
+    );
+
+  return {
+    id,
+    title: titleSeed || "Pantry Supper Bowl",
+    description,
+    image,
+    cuisine,
+    tags,
+    dietary,
+    prepTimeMinutes: prepTime,
+    cookTimeMinutes: cookTime,
+    servings,
+    ingredients,
+    instructions,
+    createdAt,
+    updatedAt: createdAt,
+    isGenerated: true,
+  };
+};
+
+// ---------- Context & Provider ----------
+
+export interface AppContextValue {
+  state: AppState;
+  allRecipes: Recipe[];
+  getRecipeById: (id: string) => Recipe | undefined;
+  isFavorite: (id: string) => boolean;
+  getRating: (id: string) => number;
+
+  // actions
+  generateRecipe: (query: string) => Promise<Recipe>;
+  toggleFavorite: (id: string) => void;
+  setPreferences: (prefs: Partial<UserPreferences>) => void;
+  addRecentSearch: (query: string) => void;
+  searchRecipes: (query: string) => Recipe[];
+  filterByPreferences: (recipes: Recipe[]) => Recipe[];
+  rateRecipe: (id: string, rating: number) => void;
+  resetState: () => void;
+}
+
+const AppContext = createContext<AppContextValue | undefined>(undefined);
+
+interface AppProviderProps {
+  children: ReactNode;
+}
+
+export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
+  const [state, setState] = useState<AppState>(() => {
+    const fromStorage = safeStorage.get();
+    if (!fromStorage) return defaultState;
+
+    // Merge with defaults to avoid missing fields when we add new ones.
+    return {
+      ...defaultState,
+      ...fromStorage,
+      preferences: {
+        ...defaultPreferences,
+        ...(fromStorage.preferences || {}),
+      },
+      recipes:
+        fromStorage.recipes && fromStorage.recipes.length > 0
+          ? fromStorage.recipes
+          : baseMockRecipes,
+    };
+  });
+
+  // Persist on change (front-end mock only)
+  useEffect(() => {
+    safeStorage.set(state);
+  }, [state]);
+
+  const allRecipes = useMemo(() => deriveAllRecipes(state), [state]);
+
+  const getRecipeById = useCallback(
+    (id: string) => allRecipes.find((r) => r.id === id),
+    [allRecipes],
+  );
+
+  const isFavorite = useCallback(
+    (id: string) => state.favorites.includes(id),
+    [state.favorites],
+  );
+
+  const getRating = useCallback(
+    (id: string) => findRating(state.ratings, id),
+    [state.ratings],
+  );
+
+  const setPreferences = useCallback((prefs: Partial<UserPreferences>) => {
+    setState((prev) => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        ...prefs,
+      },
+    }));
+  }, []);
+
+  const addRecentSearch = useCallback((query: string) => {
+    const normalized = normalizeQuery(query);
+    if (!normalized) return;
+    setState((prev) => {
+      const updated = [normalized, ...prev.recentSearches.filter((q) => q !== normalized)];
+      return {
+        ...prev,
+        recentSearches: updated.slice(0, 10),
+      };
+    });
+  }, []);
+
+  const filterByPreferences = useCallback(
+    (recipes: Recipe[]): Recipe[] => {
+      const { dietaryRestrictions, preferredCuisines, maxPrepTimeMinutes } = state.preferences;
+
+      return recipes.filter((r) => {
+        if (preferredCuisines.length && !preferredCuisines.includes(r.cuisine)) return false;
+
+        if (maxPrepTimeMinutes && r.prepTimeMinutes > maxPrepTimeMinutes) return false;
+
+        if (
+          dietaryRestrictions.length &&
+          !dietaryRestrictions.every((flag) => r.dietary.includes(flag))
+        ) {
+          return false;
+        }
+
+        return true;
+      });
+    },
+    [state.preferences],
+  );
+
+  const searchRecipes = useCallback(
+    (query: string): Recipe[] => {
+      const q = normalizeQuery(query);
+      if (!q) return filterByPreferences(allRecipes);
+
+      const results = allRecipes.filter((recipe) => {
+        const haystack = [
+          recipe.title,
+          recipe.description,
+          recipe.cuisine,
+          recipe.tags.join(" "),
+          recipe.ingredients.map((i) => i.name).join(" "),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+
+      return filterByPreferences(results);
+    },
+    [allRecipes, filterByPreferences],
+  );
+
+  const generateRecipe = useCallback(
+    async (query: string): Promise<Recipe> => {
+      const trimmed = query.trim();
+      const baseQuery = trimmed || "pantry supper";
+
+      // simulate network latency (purely mocked)
+      await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 600));
+
+      const recipe = buildGeneratedRecipe({ query: baseQuery, preferences: state.preferences });
+
+      setState((prev) => ({
+        ...prev,
+        generatedRecipes: [recipe, ...prev.generatedRecipes],
+      }));
+
+      addRecentSearch(baseQuery);
+
+      return recipe;
+    },
+    [state.preferences, addRecentSearch],
+  );
+
+  const toggleFavorite = useCallback((id: string) => {
+    setState((prev) => {
+      const isFav = prev.favorites.includes(id);
+      return {
+        ...prev,
+        favorites: isFav
+          ? prev.favorites.filter((f) => f !== id)
+          : [...prev.favorites, id],
+      };
+    });
+  }, []);
+
+  const rateRecipe = useCallback((id: string, rating: number) => {
+    const safeRating = Math.min(5, Math.max(1, Math.round(rating)));
+    setState((prev) => {
+      const existingIndex = prev.ratings.findIndex((r) => r.recipeId === id);
+      const nextRatings = [...prev.ratings];
+      if (existingIndex >= 0) {
+        nextRatings[existingIndex] = { recipeId: id, rating: safeRating };
+      } else {
+        nextRatings.push({ recipeId: id, rating: safeRating });
+      }
+      return {
+        ...prev,
+        ratings: nextRatings,
+      };
+    });
+  }, []);
+
+  const resetState = useCallback(() => {
+    setState(defaultState);
+    safeStorage.clear();
+  }, []);
+
+  const value: AppContextValue = {
+    state,
+    allRecipes,
+    getRecipeById,
+    isFavorite,
+    getRating,
+    generateRecipe,
+    toggleFavorite,
+    setPreferences,
+    addRecentSearch,
+    searchRecipes,
+    filterByPreferences,
+    rateRecipe,
+    resetState,
+  };
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+};
+
+export const useApp = (): AppContextValue => {
+  const ctx = useContext(AppContext);
+  if (!ctx) {
+    throw new Error("useApp must be used within AppProvider");
+  }
+  return ctx;
+};
+
+// ---------- Lightweight selectors for convenience ----------
+
+export const useAllRecipes = (): Recipe[] => {
+  const { allRecipes } = useApp();
+  return allRecipes;
+};
+
+export const useFavorites = (): Recipe[] => {
+  const { allRecipes, state } = useApp();
+  return useMemo(
+    () => allRecipes.filter((r) => state.favorites.includes(r.id)),
+    [allRecipes, state.favorites],
+  );
+};
+
+export const usePreferences = (): UserPreferences => {
+  const {
+    state: { preferences },
+  } = useApp();
+  return preferences;
+};
+
+export const useRecentSearches = (): string[] => {
+  const {
+    state: { recentSearches },
+  } = useApp();
+  return recentSearches;
+};

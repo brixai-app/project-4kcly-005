@@ -1,230 +1,177 @@
 import React from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Menu, User, Bookmark, Settings2, Trash2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-} from "@/components/ui/shadcn";
-
-import { usePreferences, useSavedRecipeIds, clearAllData } from "@/mock";
-
-// NOTE: This app is 100% frontend-only. All user, recipe, and preference data
-// are mocked in src/mock.ts with localStorage persistence – there is no backend.
-
-interface HeaderProps {
-  className?: string;
-}
-
-const navItems = [
-  { label: "Home", path: "/" },
-  { label: "Search", path: "/search" },
-  { label: "Profile", path: "/profile" },
-];
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/shadcn";
+import { usePreferences } from "@/mock";
+import { NAV_LINKS } from "@/routes";
+import { PreferencesPanel } from "@/components/PreferencesPanel";
 
 const headerVariants = {
-  hidden: { y: -24, opacity: 0 },
-  visible: { y: 0, opacity: 1 },
+  hidden: { opacity: 0, y: -12 },
+  visible: { opacity: 1, y: 0 },
 };
 
-const Header: React.FC<HeaderProps> = () => {
+const logoVariants = {
+  initial: { opacity: 0, x: -12 },
+  animate: { opacity: 1, x: 0 },
+};
+
+const navItemVariants = {
+  initial: { opacity: 0, y: 6 },
+  animate: (index: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: 0.12 + index * 0.04 },
+  }),
+};
+
+const Header: React.FC = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const preferences = usePreferences();
-  const savedRecipeIds = useSavedRecipeIds();
 
-  const savedCount = savedRecipeIds.length;
-
-  const handlePreferencesShortcut = () => {
-    navigate("/profile#preferences");
-  };
-
-  const handleSavedShortcut = () => {
-    navigate("/profile#saved");
-  };
-
-  const handleClearLocalData = () => {
-    clearAllData();
-  };
-
-  const isActivePath = (path: string) => {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
-  };
+  const activeDietaryCount = preferences.dietaryRestrictions.length;
 
   return (
     <motion.header
-      className="sticky top-0 z-40 w-full border-b border-neutral-200/70 bg-[rgba(250,248,244,0.92)] backdrop-blur-md dark:border-neutral-800 dark:bg-[rgba(20,17,14,0.9)]"
+      className="w-full bg-[#f9f5f0]/95 backdrop-blur border-b border-[#e1d2c4] sticky top-0 z-40"
+      variants={headerVariants}
       initial="hidden"
       animate="visible"
-      variants={headerVariants}
       transition={{ duration: 0.4, ease: "easeOut" }}
+      role="banner"
     >
-      <div className="flex h-16 items-center justify-between gap-4 px-6 lg:px-12">
-        {/* Left: Logo */}
-        <NavLink
-          to="/"
-          className="flex items-center gap-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+      <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-3 lg:py-4 flex items-center justify-between gap-4">
+        {/* Logo + Brand */}
+        <motion.div
+          className="flex items-center gap-2.5 lg:gap-3 min-w-0"
+          variants={logoVariants}
+          initial="initial"
+          animate="animate"
+          transition={{ duration: 0.45, ease: "easeOut" }}
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/90 text-amber-50 shadow-sm">
-            <span className="text-lg font-semibold">AI</span>
-          </div>
-          <div className="flex flex-col leading-tight">
-            <span className="font-['Playfair_Display'] text-base font-semibold tracking-tight text-neutral-900 dark:text-amber-50">
-              AI Recipe Generator
-            </span>
-            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
-              Everyday magic in your kitchen
-            </span>
-          </div>
-        </NavLink>
-
-        {/* Center: Primary Nav (desktop) */}
-        <nav className="hidden items-center gap-6 md:flex">
-          {navItems.map((item) => {
-            const active = isActivePath(item.path);
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  [
-                    "relative text-sm font-medium tracking-wide transition-colors",
-                    "text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-amber-100",
-                    (isActive || active) ? "text-neutral-900 dark:text-amber-50" : "",
-                  ].join(" ")
-                }
-              >
-                {({ isActive }) => (
-                  <span className="group inline-flex flex-col items-center gap-1">
-                    <span>{item.label}</span>
-                    <span
-                      className={`h-[2px] w-0 rounded-full bg-amber-500 transition-[width,background-color] duration-200 ease-out group-hover:w-6 ${
-                        isActive || active ? "w-6" : ""
-                      }`}
-                    />
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        {/* Right: Profile menu + mobile overflow */}
-        <div className="flex items-center gap-2.5">
-          {/* Saved count indicator (desktop) */}
-          <div className="hidden items-center rounded-full border border-amber-200/70 bg-amber-50/80 px-3 py-1 text-xs font-medium text-amber-800 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50 md:inline-flex">
-            <Bookmark className="mr-1 h-3.5 w-3.5" />
-            <span className="whitespace-nowrap">Saved: {savedCount}</span>
-          </div>
-
-          {/* Profile dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative h-9 w-9 rounded-full border border-neutral-200/80 bg-neutral-50/80 p-0 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-50/70 dark:border-neutral-700 dark:bg-neutral-900/60 dark:hover:border-amber-500/70 dark:hover:bg-neutral-900"
-              >
-                <Avatar className="h-7 w-7">
-                  <AvatarImage alt={preferences.name} />
-                  <AvatarFallback
-                    className="text-xs font-semibold text-neutral-900 dark:text-amber-50"
-                    style={{ backgroundColor: preferences.avatarColor }}
-                  >
-                    {preferences.name
-                      .split(" ")
-                      .map((p) => p[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              sideOffset={8}
-              align="end"
-              className="w-60 border border-neutral-200/70 bg-neutral-50/95 text-neutral-900 shadow-lg backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-50"
+          <Link to="/" className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d94f4f] rounded-md pr-1">
+            {/* Inline custom SVG logo with warm accent */}
+            <svg
+              width={32}
+              height={32}
+              viewBox="0 0 40 40"
+              aria-hidden="true"
+              className="shrink-0 drop-shadow-sm"
             >
-              <div className="flex items-center gap-3 px-3 pb-2 pt-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold text-neutral-900 dark:text-amber-50" style={{ backgroundColor: preferences.avatarColor }}>
-                  {preferences.name
-                    .split(" ")
-                    .map((p) => p[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="text-sm font-medium">{preferences.name}</span>
-                  <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
-                    Mock profile (local only)
-                  </span>
-                </div>
-              </div>
+              <defs>
+                <linearGradient id="tactilechef-logo-gradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stopColor="#f7c2a1" />
+                  <stop offset="1" stopColor="#d94f4f" />
+                </linearGradient>
+              </defs>
+              <rect
+                x="2"
+                y="2"
+                width="36"
+                height="36"
+                rx="12"
+                fill="url(#tactilechef-logo-gradient)"
+              />
+              {/* Plate */}
+              <circle cx="20" cy="20" r="9" fill="#f9f5f0" />
+              {/* Fork */}
+              <path
+                d="M14 12v6.5c0 .6.4 1.1.9 1.2L18 21"
+                stroke="#3e2c23"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M13 12h2M13 14h2M13 16h2"
+                stroke="#3e2c23"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+              {/* Spoon */}
+              <path
+                d="M26 13.5c0 1.7-1.1 3-2.4 3-1.3 0-2.4-1.3-2.4-3s1.1-2.7 2.4-2.7c1.3 0 2.4 1.1 2.4 2.7Z"
+                fill="#d94f4f"
+              />
+              <path
+                d="M23.6 16.4V22"
+                stroke="#7a5c4a"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="flex flex-col min-w-0">
+              <span className="text-base lg:text-lg font-semibold tracking-tight text-[#3e2c23] leading-tight">
+                TactileChef
+              </span>
+              <span className="text-[11px] lg:text-xs text-[#7a5c4a] leading-tight">
+                AI-crafted recipes, purely in your browser
+              </span>
+            </div>
+          </Link>
+        </motion.div>
 
-              <div className="px-3 pb-1 pt-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
-                Kitchen shortcuts
-              </div>
-
-              <DropdownMenuItem
-                onSelect={handleSavedShortcut}
-                className="flex items-center gap-2.5 text-sm text-neutral-800 focus:bg-amber-50/80 dark:text-neutral-100 dark:focus:bg-neutral-800/80"
+        {/* Navigation and actions */}
+        <nav className="flex items-center gap-3 lg:gap-5 ml-auto" aria-label="Main navigation">
+          <ul className="hidden md:flex items-center gap-2 lg:gap-3">
+            {NAV_LINKS.map((link, index) => (
+              <motion.li
+                key={link.path}
+                custom={index}
+                initial="initial"
+                animate="animate"
+                variants={navItemVariants}
               >
-                <Bookmark className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <div className="flex flex-1 items-center justify-between gap-2">
-                  <span>Saved recipes</span>
-                  <span className="rounded-full bg-amber-100 px-2 py-[2px] text-[10px] font-semibold tracking-wide text-amber-800 dark:bg-amber-500/25 dark:text-amber-200">
-                    {savedCount}
-                  </span>
-                </div>
-              </DropdownMenuItem>
+                <NavLink
+                  to={link.path}
+                  className={({ isActive }) =>
+                    [
+                      "px-3 py-1.5 rounded-full text-sm font-medium transition-colors border",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#d94f4f] focus-visible:ring-offset-[#f9f5f0]",
+                      isActive || location.pathname === link.path
+                        ? "bg-[#d94f4f] text-white border-[#d94f4f] shadow-sm"
+                        : "bg-transparent text-[#3e2c23] border-transparent hover:bg-[#f0e0d2] hover:text-[#2e211a]",
+                    ].join(" ")
+                  }
+                >
+                  {link.label}
+                </NavLink>
+              </motion.li>
+            ))}
+          </ul>
 
-              <DropdownMenuItem
-                onSelect={handlePreferencesShortcut}
-                className="flex items-center gap-2.5 text-sm text-neutral-800 focus:bg-amber-50/80 dark:text-neutral-100 dark:focus:bg-neutral-800/80"
+          {/* Preferences trigger */}
+          <PreferencesPanel.Trigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 rounded-full border-[#d4c3b4] bg-white/80 text-[#3e2c23] hover:bg-[#f0e0d2] hover:text-[#2e211a] transition-colors"
+                  aria-label="Open cooking preferences"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  {activeDietaryCount > 0 && (
+                    <span className="ml-0.5 inline-flex items-center justify-center rounded-full bg-[#d94f4f] text-white text-[10px] min-w-[1.1rem] h-[1.1rem] font-semibold">
+                      {activeDietaryCount}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="bg-[#3e2c23] text-[#f9f5f0] border border-[#7a5c4a]"
               >
-                <Settings2 className="h-4 w-4 text-neutral-600 dark:text-neutral-300" />
-                <span>Preferences</span>
-              </DropdownMenuItem>
-
-              <div className="px-3 pb-1 pt-2 text-[11px] uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
-                Data
-              </div>
-
-              <DropdownMenuItem
-                onSelect={handleClearLocalData}
-                className="flex items-center gap-2.5 text-sm text-red-700 focus:bg-red-50/90 dark:text-red-300 dark:focus:bg-red-950/60"
-              >
-                <Trash2 className="h-4 w-4" />
-                <div className="flex flex-col">
-                  <span>Clear local data</span>
-                  <span className="text-[11px] text-red-500/80 dark:text-red-400/80">
-                    Resets all recipes, saves & preferences
-                  </span>
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Mobile menu indicator (placeholder for potential future expansion) */}
-          <button
-            type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/80 bg-neutral-50/90 text-neutral-700 shadow-sm transition-colors hover:border-amber-400 hover:bg-amber-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-neutral-200 dark:hover:border-amber-500/70 dark:hover:bg-neutral-900 md:hidden"
-            aria-label="Navigation shortcuts"
-          >
-            <Menu className="h-4.5 w-4.5" />
-          </button>
-        </div>
+                <p className="text-xs font-medium">Set dietary and cuisine preferences</p>
+              </TooltipContent>
+            </Tooltip>
+          </PreferencesPanel.Trigger>
+        </nav>
       </div>
+      {/* Render the sheet once at root level */}
+      <PreferencesPanel.Content />
     </motion.header>
   );
 };

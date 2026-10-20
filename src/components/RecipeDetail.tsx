@@ -1,500 +1,403 @@
-import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Bookmark, Clock, Flame, Users, Star, Sparkles } from "lucide-react";
-
+import React, { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Star, Clock, Flame, Heart, HeartOff, Utensils, Check } from "lucide-react";
+import { Recipe, useApp } from "@/mock";
 import {
-  Badge,
   Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  Badge,
   Tabs,
-  TabsContent,
   TabsList,
   TabsTrigger,
+  TabsContent,
   Separator,
 } from "@/components/ui/shadcn";
-
-import { Recipe, toggleSavedRecipe, useMockStore } from "@/mock";
-import ReviewSection from "./ReviewSection";
 import { cn } from "@/lib/utils";
 
 export interface RecipeDetailProps {
-  recipe?: Recipe;
+  recipe: Recipe;
+  /**
+   * Optional flag indicating if this detail view is rendered inside a modal/dialog.
+   * Used only for minor layout tweaks (no behavioral changes).
+   */
+  inDialog?: boolean;
 }
 
-const containerVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.45, ease: [0.22, 0.61, 0.36, 1] },
-  },
-};
+/**
+ * Detailed recipe view component.
+ *
+ * NOTE: This is 100% frontend-only and uses mocked state from src/mock.ts.
+ * Favorites and ratings are persisted via localStorage through the AppProvider mock.
+ * Ingredient checklist state is intentionally ephemeral and lives only in this component.
+ */
+const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inDialog = false }) => {
+  const { isFavorite, toggleFavorite, getRating, rateRecipe } = useApp();
 
-const listVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.05,
-      delayChildren: 0.05,
-    },
-  },
-};
+  const [activeTab, setActiveTab] = useState<"ingredients" | "instructions">(
+    "ingredients",
+  );
+  const [checkedIngredients, setCheckedIngredients] = useState<Record<string, boolean>>({});
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.25 } },
-};
+  const currentRating = getRating(recipe.id);
 
-const organicShapeVariants = {
-  initial: { scale: 1.05, opacity: 0.7 },
-  animate: {
-    scale: 1,
-    opacity: 0.95,
-    transition: {
-      duration: 8,
-      repeat: Infinity,
-      repeatType: "reverse" as const,
-      ease: "easeInOut" as const,
-    },
-  },
-};
+  const totalTime = useMemo(
+    () => recipe.prepTimeMinutes + recipe.cookTimeMinutes,
+    [recipe.prepTimeMinutes, recipe.cookTimeMinutes],
+  );
 
-const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe }) => {
-  const savedIds = useMockStore((s) => s.savedRecipeIds);
-
-  if (!recipe) {
-    return (
-      <div className="w-full min-h-[60vh] flex items-center justify-center px-6 lg:px-12 bg-gradient-to-b from-stone-100/70 via-stone-50 to-stone-100 dark:from-stone-900 dark:via-stone-950 dark:to-stone-900">
-        <div className="max-w-[640px] w-full bg-white/70 dark:bg-stone-900/70 border border-stone-200/70 dark:border-stone-700/80 rounded-3xl shadow-md px-8 py-10 backdrop-blur-md">
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3 font-['Playfair_Display'] text-stone-900 dark:text-stone-50">
-            Recipe not found
-          </h1>
-          <p className="text-sm md:text-base text-stone-600 dark:text-stone-300 leading-relaxed">
-            This recipe may have been removed or never existed. Try heading back to the
-            home or search page to explore other dishes from the mock AI kitchen.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const isSaved = savedIds.includes(recipe.id);
-
-  const totalTime = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
-
-  const handleToggleSave = () => {
-    // Mock-only: this updates in-memory + localStorage state via src/mock.ts
-    toggleSavedRecipe(recipe.id);
+  const handleToggleIngredient = (id: string) => {
+    setCheckedIngredients((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
   };
 
-  const accentBg = `${recipe.accentColor}1F`; // low opacity overlay using hex with alpha
+  const handleRatingClick = (value: number) => {
+    rateRecipe(recipe.id, value);
+  };
+
+  const favorite = isFavorite(recipe.id);
+
+  const dietaryChips = recipe.dietary;
+
+  const ratingLabel = currentRating ? `${currentRating} out of 5 stars` : "Not yet rated";
 
   return (
-    <div className="w-full min-h-screen bg-gradient-to-b from-stone-100 via-stone-50 to-stone-100 dark:from-stone-950 dark:via-stone-900 dark:to-stone-950 text-stone-900 dark:text-stone-50">
-      {/* HERO SECTION */}
-      <section className="w-full min-h-[60vh] relative overflow-hidden">
+    <motion.section
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className={cn(
+        "w-full",
+        !inDialog && "py-4 lg:py-6",
+      )}
+      aria-label={`Full recipe for ${recipe.title}`}
+    >
+      <Card className="border border-[#e2d7cc] bg-[#f9f5f0]/70 backdrop-blur-sm shadow-sm overflow-hidden">
         {/* Hero image */}
-        <div className="absolute inset-0">
-          <img
-            src={recipe.heroImageUrl}
+        <div className="w-full overflow-hidden bg-[#f0e3d3]">
+          <motion.img
+            src={recipe.image}
+            loading="lazy"
             alt={recipe.title}
-            className="w-full h-full object-cover"
+            className="w-full h-64 md:h-80 lg:h-96 object-cover"
+            initial={{ scale: 1.02, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/45 to-black/65" />
         </div>
 
-        {/* Organic overlay shape */}
-        <motion.div
-          className="pointer-events-none absolute -right-32 top-10 h-[420px] w-[420px] rounded-[55%]"
-          style={{
-            background:
-              "radial-gradient(circle at 10% 20%, rgba(244,162,97,0.75), transparent 60%), radial-gradient(circle at 80% 80%, rgba(233,196,106,0.75), transparent 55%)",
-          }}
-          variants={organicShapeVariants}
-          initial="initial"
-          animate="animate"
-        />
-
-        {/* Hero content */}
-        <div className="relative z-10 w-full max-w-[1600px] mx-auto px-6 lg:px-12 py-10 lg:py-16 flex flex-col gap-8">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="max-w-[840px] bg-stone-950/40 border border-white/10 rounded-3xl px-6 md:px-8 py-6 md:py-7 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  className="rounded-full bg-stone-900/80 text-stone-100 border border-white/10 text-xs uppercase tracking-[0.18em] px-3 py-1"
-                >
-                  {recipe.isAIgenerated ? "AI Crafted" : "Curated"}
-                </Badge>
-                <Badge
-                  style={{ backgroundColor: recipe.accentColor }}
-                  className="rounded-full text-[11px] font-medium text-stone-900 px-3 py-1 bg-opacity-90"
-                >
-                  {recipe.cuisine.replace("-", " ")}
-                </Badge>
-              </div>
-
-              {recipe.averageRating && recipe.ratingCount ? (
-                <div className="flex items-center gap-2 text-amber-200">
-                  <Star className="w-4 h-4 fill-amber-300 text-amber-300" />
-                  <span className="text-sm font-medium">
-                    {recipe.averageRating.toFixed(1)}
-                  </span>
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-amber-100/70">
-                    {recipe.ratingCount} reviews
-                  </span>
+        <CardHeader className="space-y-4 pb-3 sm:pb-4">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-2xl sm:text-3xl lg:text-4xl font-semibold font-['Playfair_Display'] tracking-tight text-[#3e2c23] whitespace-normal break-words">
+                  {recipe.title}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    className="rounded-full bg-[#e5c7b2] text-[#3e2c23] px-3 py-1 text-xs font-medium tracking-wide"
+                    aria-label={`Cuisine: ${recipe.cuisine}`}
+                  >
+                    <Utensils className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+                    {recipe.cuisine}
+                  </Badge>
                 </div>
-              ) : (
-                <div className="flex items-center gap-1.5 text-xs text-stone-200/80">
-                  <Sparkles className="w-4 h-4" />
-                  <span>Be the first to review this mock recipe</span>
-                </div>
-              )}
-            </div>
-
-            <h1 className="font-['Playfair_Display'] text-3xl md:text-4xl lg:text-5xl font-semibold leading-tight md:leading-tight text-stone-50 whitespace-normal break-words mb-3">
-              {recipe.title}
-            </h1>
-
-            {recipe.subtitle && (
-              <p className="text-sm md:text-base text-stone-200/90 leading-relaxed mb-4">
-                {recipe.subtitle}
-              </p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3 md:gap-4 mb-5">
-              <div className="flex items-center gap-2 text-stone-100/90 text-xs md:text-sm">
-                <Clock className="w-4 h-4" />
-                <span className="font-medium">{totalTime} mins</span>
-                <span className="text-stone-300/80 text-[11px]">total</span>
               </div>
-              <Separator orientation="vertical" className="h-5 bg-stone-600/70" />
-              <div className="flex items-center gap-2 text-stone-100/90 text-xs md:text-sm">
-                <Users className="w-4 h-4" />
-                <span className="font-medium">Serves {recipe.servings}</span>
-              </div>
-              <Separator orientation="vertical" className="h-5 bg-stone-600/70" />
-              <div className="flex items-center gap-2 text-stone-100/90 text-xs md:text-sm">
-                <Flame className="w-4 h-4" />
-                <span className="capitalize font-medium">{recipe.difficulty}</span>
-              </div>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2 mb-6">
-              {recipe.dietTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-full border border-stone-500/70 bg-stone-900/60 text-[11px] md:text-xs text-stone-100 px-3 py-1"
-                >
-                  {tag.replace("-", " ")}
-                </span>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs md:text-sm text-stone-200/95 max-w-[520px] leading-relaxed">
+              <CardDescription className="text-sm sm:text-base text-[#6b5443] whitespace-normal break-words">
                 {recipe.description}
-              </p>
+              </CardDescription>
+            </div>
 
-              <motion.div whileTap={{ scale: 0.96 }}>
+            {/* Meta info & actions */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-[#6b5443]">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-[#d94f4f]" aria-hidden="true" />
+                  <span className="font-medium">Total:</span>
+                  <span>{totalTime} min</span>
+                </div>
+                <Separator orientation="vertical" className="h-4 hidden sm:block bg-[#d9c8b6]" />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Prep:</span>
+                  <span>{recipe.prepTimeMinutes} min</span>
+                </div>
+                <Separator orientation="vertical" className="h-4 hidden sm:block bg-[#d9c8b6]" />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Cook:</span>
+                  <span>{recipe.cookTimeMinutes} min</span>
+                </div>
+                <Separator orientation="vertical" className="h-4 hidden sm:block bg-[#d9c8b6]" />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Serves:</span>
+                  <span>{recipe.servings}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Rating stars */}
+                <div className="flex items-center gap-1.5" aria-label={`Rating controls: ${ratingLabel}`}>
+                  {Array.from({ length: 5 }).map((_, index) => {
+                    const value = index + 1;
+                    const filled = value <= currentRating;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleRatingClick(value)}
+                        className="inline-flex focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#d94f4f] focus-visible:ring-offset-[#f9f5f0] rounded-full"
+                        aria-label={`Set rating to ${value} ${value === 1 ? "star" : "stars"}`}
+                      >
+                        <Star
+                          className={cn(
+                            "w-4 h-4 transition-colors duration-150",
+                            filled ? "text-[#d94f4f] fill-[#d94f4f]" : "text-[#c3a899]",
+                          )}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    );
+                  })}
+                  <span className="sr-only">{ratingLabel}</span>
+                </div>
+
+                {/* Favorite toggle */}
                 <Button
                   type="button"
-                  onClick={handleToggleSave}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toggleFavorite(recipe.id)}
                   className={cn(
-                    "rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 shadow-md border border-white/15 transition-colors duration-150",
-                    isSaved
-                      ? "bg-white text-stone-900 hover:bg-amber-100/90"
-                      : "bg-amber-300/95 text-stone-950 hover:bg-amber-200",
+                    "border-[#e0c8b6] bg-white/80 text-[#3e2c23] hover:bg-[#f5e5d7] hover:text-[#3e2c23] transition-colors duration-150",
                   )}
+                  aria-pressed={favorite}
+                  aria-label={favorite ? "Remove from favorites" : "Save to favorites"}
                 >
-                  <Bookmark
-                    className={cn(
-                      "w-4 h-4",
-                      isSaved ? "fill-stone-900" : "fill-stone-950/80",
-                    )}
-                  />
-                  {isSaved ? "Saved" : "Save recipe"}
+                  {favorite ? (
+                    <HeartOff className="w-4 h-4 mr-1.5 text-[#d94f4f]" aria-hidden="true" />
+                  ) : (
+                    <Heart className="w-4 h-4 mr-1.5 text-[#d94f4f]" aria-hidden="true" />
+                  )}
+                  <span className="text-xs sm:text-sm font-medium">
+                    {favorite ? "Saved" : "Save"}
+                  </span>
                 </Button>
-              </motion.div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* BODY SECTION */}
-      <section className="w-full relative z-10 -mt-10 md:-mt-16 pb-16 lg:pb-24">
-        <div
-          className="w-full max-w-[1600px] mx-auto px-6 lg:px-12"
-          style={{
-            // subtle accent-tinted surface under content
-            background: `linear-gradient(to bottom, ${accentBg}, transparent 40%)`,
-          }}
-        >
-          <div className="bg-stone-50/95 dark:bg-stone-900/95 border border-stone-200/80 dark:border-stone-800 rounded-3xl shadow-[0_18px_55px_rgba(15,23,42,0.35)] backdrop-blur-xl px-4 md:px-6 lg:px-8 py-6 md:py-8 lg:py-9">
-            <Tabs defaultValue="ingredients" className="w-full">
-              <div className="flex flex-col gap-4 md:gap-6 mb-4 md:mb-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <TabsList className="bg-stone-100 dark:bg-stone-800 rounded-full p-1 inline-flex">
-                    <TabsTrigger
-                      value="ingredients"
-                      className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm px-4 py-1.5 text-xs md:text-sm"
-                    >
-                      Ingredients
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="instructions"
-                      className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm px-4 py-1.5 text-xs md:text-sm"
-                    >
-                      Instructions
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="reviews"
-                      className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm px-4 py-1.5 text-xs md:text-sm"
-                    >
-                      Reviews
-                    </TabsTrigger>
-                  </TabsList>
-
-                  <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm text-stone-600 dark:text-stone-300">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-stone-500" />
-                      <span>
-                        Prep {recipe.prepTimeMinutes} min · Cook {recipe.cookTimeMinutes} min
-                      </span>
-                    </div>
-                    <Separator orientation="vertical" className="hidden md:block h-5 bg-stone-200 dark:bg-stone-700" />
-                    <div className="flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-stone-500" />
-                      <span>{recipe.servings} servings</span>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator className="bg-stone-200 dark:bg-stone-800" />
               </div>
-
-              {/* INGREDIENTS TAB */}
-              <TabsContent value="ingredients" className="mt-0">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key="ingredients"
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit={{ opacity: 0, y: 8, transition: { duration: 0.2 } }}
-                    className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8"
-                  >
-                    <div className="lg:col-span-7 min-w-0 flex flex-col gap-4">
-                      <h2 className="font-['Playfair_Display'] text-xl md:text-2xl font-semibold text-stone-900 dark:text-stone-50">
-                        What you&apos;ll need
-                      </h2>
-                      <p className="text-sm md:text-sm text-stone-600 dark:text-stone-300 leading-relaxed">
-                        These amounts are a cozy starting point from the mock AI kitchen. Adjust to
-                        taste, mood, and who&apos;s gathering around your table.
-                      </p>
-
-                      <motion.ul
-                        variants={listVariants}
-                        initial="hidden"
-                        animate="visible"
-                        className="mt-2 space-y-2.5"
-                      >
-                        {recipe.ingredients.map((ingredient, index) => (
-                          <motion.li
-                            key={ingredient.id}
-                            variants={itemVariants}
-                            className="flex items-start gap-3 rounded-2xl border border-stone-200/90 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 px-3.5 py-3"
-                          >
-                            <div
-                              className="mt-1 h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold"
-                              style={{
-                                backgroundColor: recipe.accentColor,
-                                color: "#1f2933",
-                              }}
-                            >
-                              {index + 1}
-                            </div>
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <div className="flex flex-wrap items-baseline gap-2">
-                                <span className="text-sm md:text-[15px] font-medium text-stone-900 dark:text-stone-50">
-                                  {ingredient.name}
-                                </span>
-                                <span className="text-xs md:text-[13px] text-stone-600 dark:text-stone-300">
-                                  {ingredient.quantity}
-                                </span>
-                              </div>
-                              {ingredient.notes && (
-                                <p className="text-[11px] md:text-xs text-stone-500 dark:text-stone-400">
-                                  {ingredient.notes}
-                                </p>
-                              )}
-                            </div>
-                          </motion.li>
-                        ))}
-                      </motion.ul>
-                    </div>
-
-                    <div className="lg:col-span-5 min-w-[320px] flex flex-col gap-4">
-                      <div className="rounded-3xl border border-stone-200/90 dark:border-stone-800 bg-gradient-to-br from-white via-amber-50/70 to-stone-50 dark:from-stone-900 dark:via-stone-900/80 dark:to-stone-900 px-4 md:px-5 py-4 md:py-5 shadow-sm">
-                        <h3 className="font-['Playfair_Display'] text-lg font-semibold mb-2 text-stone-900 dark:text-stone-50">
-                          Pantry vibes
-                        </h3>
-                        <p className="text-xs md:text-sm text-stone-700 dark:text-stone-300 mb-3 leading-relaxed">
-                          This is a fully mocked experience — the AI recipe ideas are generated in
-                          your browser using the ingredients you share, with no real backend or
-                          model calls.
-                        </p>
-                        {recipe.aiPromptSummary && (
-                          <div className="rounded-2xl border border-amber-200/80 dark:border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/40 px-3 py-3 text-xs md:text-sm text-amber-900 dark:text-amber-100">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <Sparkles className="w-3.5 h-3.5" />
-                              <span className="font-semibold tracking-wide text-[11px] uppercase">
-                                Prompt that inspired this
-                              </span>
-                            </div>
-                            <p className="leading-relaxed whitespace-normal break-words">
-                              {recipe.aiPromptSummary}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
-              </TabsContent>
-
-              {/* INSTRUCTIONS TAB */}
-              <TabsContent value="instructions" className="mt-0">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key="instructions"
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit={{ opacity: 0, y: 8, transition: { duration: 0.2 } }}
-                    className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8"
-                  >
-                    <div className="lg:col-span-7 min-w-0 flex flex-col gap-4">
-                      <h2 className="font-['Playfair_Display'] text-xl md:text-2xl font-semibold text-stone-900 dark:text-stone-50">
-                        Step-by-step flow
-                      </h2>
-                      <p className="text-sm md:text-sm text-stone-600 dark:text-stone-300 leading-relaxed">
-                        Move through these steps at your own pace. They&apos;re written for real home
-                        kitchens, not test labs — feel free to improvise.
-                      </p>
-
-                      <motion.ol
-                        variants={listVariants}
-                        initial="hidden"
-                        animate="visible"
-                        className="mt-3 space-y-3 md:space-y-3.5"
-                      >
-                        {recipe.instructions.map((step, index) => (
-                          <motion.li
-                            key={`${index}-${step.slice(0, 10)}`}
-                            variants={itemVariants}
-                            className="relative flex gap-4"
-                          >
-                            <div className="flex flex-col items-center mr-1">
-                              <div
-                                className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold border shadow-sm"
-                                style={{
-                                  backgroundColor: "#fefce8",
-                                  borderColor: recipe.accentColor,
-                                  color: "#1f2933",
-                                }}
-                              >
-                                {index + 1}
-                              </div>
-                              {index < recipe.instructions.length - 1 && (
-                                <div className="flex-1 w-px bg-gradient-to-b from-stone-300 via-stone-300/70 to-transparent dark:from-stone-700 dark:via-stone-700/70 mt-1" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0 rounded-2xl border border-stone-200 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 px-3.5 py-3">
-                              <p className="text-sm md:text-[15px] text-stone-800 dark:text-stone-100 leading-relaxed whitespace-normal break-words">
-                                {step}
-                              </p>
-                            </div>
-                          </motion.li>
-                        ))}
-                      </motion.ol>
-                    </div>
-
-                    <div className="lg:col-span-5 min-w-[320px] flex flex-col gap-4">
-                      <div className="rounded-3xl border border-stone-200/90 dark:border-stone-800 bg-gradient-to-br from-stone-50 via-stone-100/70 to-amber-50/70 dark:from-stone-900 dark:via-stone-900/90 dark:to-stone-900 px-4 md:px-5 py-4 md:py-5 shadow-sm">
-                        <h3 className="font-['Playfair_Display'] text-lg font-semibold mb-2 text-stone-900 dark:text-stone-50">
-                          Serving notes
-                        </h3>
-                        <ul className="text-xs md:text-sm text-stone-700 dark:text-stone-300 space-y-2.5 leading-relaxed">
-                          <li>
-                            Taste as you go — this mock recipe is a starting point. Layer in acid,
-                            salt, and richness until it feels right for you.
-                          </li>
-                          <li>
-                            Use the steps as a loose timeline. If something looks ready earlier,
-                            trust your eyes and nose over the clock.
-                          </li>
-                          <li>
-                            This entire experience is powered by a frontend-only mock state in your
-                            browser&apos;s localStorage. Clearing your data will reset the recipes.
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
-              </TabsContent>
-
-              {/* REVIEWS TAB */}
-              <TabsContent value="reviews" className="mt-0">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key="reviews"
-                    variants={containerVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit={{ opacity: 0, y: 8, transition: { duration: 0.2 } }}
-                    className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8"
-                  >
-                    <div className="lg:col-span-7 min-w-0">
-                      <h2 className="font-['Playfair_Display'] text-xl md:text-2xl font-semibold mb-3 text-stone-900 dark:text-stone-50">
-                        Reviews from the test kitchen
-                      </h2>
-                      <p className="text-sm md:text-sm text-stone-600 dark:text-stone-300 mb-4 leading-relaxed">
-                        Share how this mock recipe played out in your own kitchen — riffs,
-                        substitutions, and cozy tweaks are all welcome.
-                      </p>
-                      <ReviewSection recipeId={recipe.id} />
-                    </div>
-
-                    <div className="lg:col-span-5 min-w-[320px] flex flex-col gap-4">
-                      <div className="rounded-3xl border border-stone-200/90 dark:border-stone-800 bg-gradient-to-br from-white via-emerald-50/70 to-stone-50 dark:from-stone-900 dark:via-stone-900/80 dark:to-stone-900 px-4 md:px-5 py-4 md:py-5 shadow-sm">
-                        <h3 className="font-['Playfair_Display'] text-lg font-semibold mb-2 text-stone-900 dark:text-stone-50">
-                          How feedback works here
-                        </h3>
-                        <p className="text-xs md:text-sm text-stone-700 dark:text-stone-300 leading-relaxed mb-2.5">
-                          Ratings and reviews are stored entirely in this browser using the shared
-                          mock state from <span className="font-mono text-[11px]">src/mock.ts</span>.
-                          There&apos;s no backend — just a playful preview of what a full platform
-                          could be.
-                        </p>
-                        <p className="text-xs md:text-sm text-stone-700 dark:text-stone-300 leading-relaxed">
-                          Refreshing the page keeps your reviews thanks to localStorage
-                          persistence; clearing site data will wipe the slate clean.
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                </AnimatePresence>
-              </TabsContent>
-            </Tabs>
+            </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </CardHeader>
+
+        <Separator className="bg-[#e1d3c4]" />
+
+        <CardContent className="pt-4 sm:pt-6">
+          {/* Tags & dietary chips */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.05 }}
+            className="flex flex-col gap-3 mb-5"
+          >
+            <div className="flex flex-wrap gap-2.5">
+              {recipe.tags.map((tag) => (
+                <Badge
+                  key={tag}
+                  className="rounded-full bg-white text-[#5a4334] border border-[#e0c8b6] px-3 py-1 text-[11px] uppercase tracking-[0.14em] font-semibold"
+                >
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+            {dietaryChips.length > 0 && (
+              <div className="flex flex-wrap gap-2.5" aria-label="Dietary information">
+                {dietaryChips.map((flag) => (
+                  <div
+                    key={flag}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#e0c8b6] bg-[#f4e5d7] px-3 py-1 text-xs font-medium text-[#4a3629]"
+                  >
+                    <Flame className="w-3.5 h-3.5 text-[#d94f4f]" aria-hidden="true" />
+                    <span className="capitalize">{flag.replace("-", " ")}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+
+          {/* Main sections with tabs on small screens and split layout on large */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+            {/* Tabs wrapper for mobile/tablet */}
+            <div className="lg:hidden mb-1">
+              <Tabs
+                value={activeTab}
+                onValueChange={(val) => setActiveTab(val as "ingredients" | "instructions")}
+              >
+                <TabsList className="grid grid-cols-2 bg-[#f1e3d6]">
+                  <TabsTrigger
+                    value="ingredients"
+                    className="data-[state=active]:bg-white data-[state=active]:text-[#3e2c23] text-xs sm:text-sm"
+                    aria-label="Show ingredients"
+                  >
+                    Ingredients
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="instructions"
+                    className="data-[state=active]:bg-white data-[state=active]:text-[#3e2c23] text-xs sm:text-sm"
+                    aria-label="Show instructions"
+                  >
+                    Instructions
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="ingredients" className="mt-4">
+                  <IngredientsSection
+                    recipe={recipe}
+                    checkedIngredients={checkedIngredients}
+                    onToggleIngredient={handleToggleIngredient}
+                  />
+                </TabsContent>
+                <TabsContent value="instructions" className="mt-4">
+                  <InstructionsSection recipe={recipe} />
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* Desktop / large layout: 2-column workbench style */}
+            <div className="hidden lg:block lg:col-span-5 min-w-0">
+              <IngredientsSection
+                recipe={recipe}
+                checkedIngredients={checkedIngredients}
+                onToggleIngredient={handleToggleIngredient}
+              />
+            </div>
+            <div className="hidden lg:block lg:col-span-7 min-w-0">
+              <InstructionsSection recipe={recipe} />
+            </div>
+          </div>
+        </CardContent>
+
+        <CardFooter className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 pt-4 border-t border-[#e1d3c4] bg-[#f7eee6]">
+          <p className="text-xs sm:text-sm text-[#7a5c4a] whitespace-normal break-words">
+            This recipe is part of the TactileChef demo experience. All data, favorites, and
+            ratings are stored only in your browser via mocked localStorage, with no backend
+            involved.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {recipe.isGenerated && (
+              <Badge className="rounded-full bg-[#d94f4f] text-white px-3 py-1 text-[11px] font-semibold tracking-[0.16em] uppercase">
+                AI-crafted
+              </Badge>
+            )}
+          </div>
+        </CardFooter>
+      </Card>
+    </motion.section>
+  );
+};
+
+interface IngredientsSectionProps {
+  recipe: Recipe;
+  checkedIngredients: Record<string, boolean>;
+  onToggleIngredient: (id: string) => void;
+}
+
+const IngredientsSection: React.FC<IngredientsSectionProps> = ({
+  recipe,
+  checkedIngredients,
+  onToggleIngredient,
+}) => {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.08 }}
+      className="space-y-4"
+      aria-labelledby="ingredients-heading"
+    >
+      <div className="flex items-center justify-between w-full">
+        <h2
+          id="ingredients-heading"
+          className="text-lg lg:text-xl font-semibold font-['Playfair_Display'] text-[#3e2c23] whitespace-normal break-words"
+        >
+          Ingredients
+        </h2>
+        <span className="text-xs text-[#7a5c4a]">
+          Tap to check items as you cook
+        </span>
+      </div>
+      <ul className="space-y-2" aria-label="Ingredients list with checkable items">
+        {recipe.ingredients.map((ingredient) => {
+          const checked = checkedIngredients[ingredient.id] ?? false;
+          return (
+            <li key={ingredient.id} className="flex items-start gap-3">
+              <button
+                type="button"
+                onClick={() => onToggleIngredient(ingredient.id)}
+                className={cn(
+                  "mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border border-[#d5c2b0] bg-white text-[#3e2c23]",
+                  checked && "bg-[#d94f4f] border-[#d94f4f] text-white",
+                )}
+                aria-pressed={checked}
+                aria-label={
+                  checked
+                    ? `Mark ${ingredient.name} as not used`
+                    : `Mark ${ingredient.name} as used`
+                }
+              >
+                {checked && <Check className="w-3 h-3" aria-hidden="true" />}
+              </button>
+              <p
+                className={cn(
+                  "text-sm text-[#4a3629] whitespace-normal break-words",
+                  checked && "line-through text-[#a58a78]",
+                )}
+              >
+                <span className="font-medium">
+                  {ingredient.quantity ? `${ingredient.quantity} ` : null}
+                </span>
+                {ingredient.name}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </motion.section>
+  );
+};
+
+interface InstructionsSectionProps {
+  recipe: Recipe;
+}
+
+const InstructionsSection: React.FC<InstructionsSectionProps> = ({ recipe }) => {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.12 }}
+      className="space-y-4"
+      aria-labelledby="instructions-heading"
+    >
+      <div className="flex items-center justify-between w-full">
+        <h2
+          id="instructions-heading"
+          className="text-lg lg:text-xl font-semibold font-['Playfair_Display'] text-[#3e2c23] whitespace-normal break-words"
+        >
+          Instructions
+        </h2>
+      </div>
+      <ol className="space-y-3 list-decimal list-inside text-sm text-[#4a3629]">
+        {recipe.instructions.map((step, index) => (
+          <li key={index} className="pl-0 whitespace-normal break-words">
+            <p className="leading-relaxed">{step}</p>
+          </li>
+        ))}
+      </ol>
+    </motion.section>
   );
 };
 

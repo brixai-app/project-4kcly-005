@@ -4,15 +4,10 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Toaster } from 'sonner';
 import HomePage from '@/pages/HomePage';
-import RecipeSearchPage from '@/pages/RecipeSearchPage';
-import RecipeDetailPage from '@/pages/RecipeDetailPage';
-import ProfilePage from '@/pages/ProfilePage';
-
-// App
-// ----
-// Root router configuration for the AI Recipe Generator.
-// Note: Only routes that have concrete pages in the project
-// are referenced here to avoid missing-module TS errors.
+import SearchPage from '@/pages/SearchPage';
+import RecipePage from '@/pages/RecipePage';
+import FavoritesPage from '@/pages/FavoritesPage';
+import NotFoundPage from '@/pages/NotFoundPage';
 
 export default function App() {
   return (
@@ -22,10 +17,11 @@ export default function App() {
         <Header />
         <main className="flex-1 w-full">
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/search" element={<RecipeSearchPage />} />
-            <Route path="/recipe/:id" element={<RecipeDetailPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/recipe/:id" element={<RecipePage />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="*" element={<NotFoundPage />} />
             <Route path="*" element={<HomePage />} />
           </Routes>
         </main>
